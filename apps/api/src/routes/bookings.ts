@@ -4,7 +4,6 @@ import redis from "../config/redis";
 import { validateBody } from "../middleware/validation";
 import { BookingHoldSchema } from "@studyspace/shared";
 import { authMiddleware } from "../middleware/auth";
-import { io } from "../index";
 import { BookingStatus } from "@prisma/client";
 import { sendBookingConfirmationEmail } from "../utils/email";
 
@@ -27,6 +26,7 @@ async function getSeatLibraryInfo(seatId: string) {
 // POST /bookings/hold - Place temporary Redis-backed hold on seat
 router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req, res) => {
   try {
+    const io = req.app.get("io");
     const { seatId, slotTypeId, date } = req.body;
     const userId = req.user!.userId;
 
@@ -91,6 +91,7 @@ router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req
 // POST /bookings/:id/release - Release seat hold (where :id is the seatId)
 router.post("/:id/release", authMiddleware, async (req, res) => {
   try {
+    const io = req.app.get("io");
     const seatId = req.params.id;
     const { slotTypeId, date } = req.body;
     const userId = req.user!.userId;
@@ -138,6 +139,7 @@ router.post("/:id/release", authMiddleware, async (req, res) => {
 // POST /bookings - Create final booking (Stubbed Payment Flow)
 router.post("/", authMiddleware, async (req, res) => {
   try {
+    const io = req.app.get("io");
     const { seatId, slotTypeId, date } = req.body;
     const userId = req.user!.userId;
 
