@@ -1,0 +1,162 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(STUDENT)
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  bookings      Booking[]
+  libraries     Library[] @relation("OwnerLibraries")
+  reviews       Review[]
+}
+
+enum Role {
+  STUDENT
+  OWNER
+  ADMIN
+}
+
+model Library {
+  id          String     @id @default(cuid())
+  ownerId     String
+  owner       User       @relation("OwnerLibraries", fields: [ownerId], references: [id])
+  name        String
+  address     String
+  city        String
+  isActive    Boolean    @default(false)
+  amenities   String[]
+  createdAt   DateTime   @default(now())
+  floorPlan   FloorPlan?
+  slotTypes   SlotType[]
+  bookings    Booking[]
+  reviews     Review[]
+  photos      LibraryPhoto[]
+}
+
+model LibraryPhoto {
+  id         String  @id @default(cuid())
+  libraryId  String
+  library    Library @relation(fields: [libraryId], references: [id])
+  url        String
+}
+
+model FloorPlan {
+  id            String         @id @default(cuid())
+  libraryId     String         @unique
+  library       Library        @relation(fields: [libraryId], references: [id])
+  canvasWidth   Int
+  canvasHeight  Int
+  objects       LayoutObject[]
+}
+
+model LayoutObject {
+  id           String       @id @default(cuid())
+  floorPlanId  String
+  floorPlan    FloorPlan    @relation(fields: [floorPlanId], references: [id])
+  type         ObjectType
+  x            Float
+  y            Float
+  width        Float
+  height       Float
+  rotation     Float        @default(0)
+  zIndex       Int          @default(0)
+  label        String?
+  seat         Seat?
+}
+
+enum ObjectType {
+  SEAT
+  TABLE
+  AC
+  FAN
+  BOOKSHELF
+  WATER
+  CUSTOM
+  WALL
+  LINE
+}
+
+model Seat {
+  id              String        @id @default(cuid())
+  layoutObjectId  String        @unique
+  layoutObject    LayoutObject  @relation(fields: [layoutObjectId], references: [id])
+  seatCode        String
+  seatType        String
+  isActive        Boolean       @default(true)
+  bookings        Booking[]
+}
+
+model SlotType {
+  id          String    @id @default(cuid())
+  libraryId   String
+  library     Library   @relation(fields: [libraryId], references: [id])
+  name        String
+  startTime   String
+  endTime     String
+  price       Decimal
+  bookings    Booking[]
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  libraryId      String
+  library        Library       @relation(fields: [libraryId], references: [id])
+  seatId         String
+  seat           Seat          @relation(fields: [seatId], references: [id])
+  slotTypeId     String
+  slotType       SlotType      @relation(fields: [slotTypeId], references: [id])
+  date           DateTime
+  status         BookingStatus @default(HELD)
+  holdExpiresAt  DateTime?
+  totalPrice     Decimal
+  createdAt      DateTime      @default(now())
+  payment        Payment?
+  review         Review?
+  accessKey      String        @default("")
+
+  @@unique([seatId, date, slotTypeId], name: "seat_date_slot_unique")
+}
+
+enum BookingStatus {
+  HELD
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  amount      Decimal
+  status      String   @default("pending")
+  gatewayRef  String?
+  createdAt   DateTime @default(now())
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  libraryId   String
+  library     Library  @relation(fields: [libraryId], references: [id])
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now())
+}
