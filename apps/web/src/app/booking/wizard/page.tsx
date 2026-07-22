@@ -56,6 +56,10 @@ function BookingWizardContent() {
   const date = searchParams.get("date") || "";
   const slotTypeId = searchParams.get("slotTypeId") || "";
 
+  // Date range states
+  const [startDateVal, setStartDateVal] = useState(searchParams.get("startDate") || date || "");
+  const [endDateVal, setEndDateVal] = useState(searchParams.get("endDate") || date || "");
+
   // Wizard state: 1 = Dates Confirm, 2 = Seat Selection, 3 = Details, 4 = Payment, 5 = Confirmation
   const [step, setStep] = useState(1);
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
@@ -98,16 +102,16 @@ function BookingWizardContent() {
 
   // 3. Fetch seat availability
   const { data: availability, refetch: refetchAvailability } = useQuery<SeatAvailability[]>({
-    queryKey: ["availability-wizard", libraryId, date, slotTypeId],
+    queryKey: ["availability-wizard", libraryId, startDateVal, endDateVal, slotTypeId],
     queryFn: async () => {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
       const res = await fetch(
-        `${apiBase}/libraries/${libraryId}/availability?date=${date}&slotTypeId=${slotTypeId}`
+        `${apiBase}/libraries/${libraryId}/availability?startDate=${startDateVal}&endDate=${endDateVal}&slotTypeId=${slotTypeId}`
       );
       if (!res.ok) throw new Error("Failed to load seat availability");
       return res.json();
     },
-    enabled: !!libraryId && !!date && !!slotTypeId,
+    enabled: !!libraryId && !!startDateVal && !!endDateVal && !!slotTypeId,
   });
 
   // Socket.io listeners
@@ -121,7 +125,7 @@ function BookingWizardContent() {
     socket.on("seat-status-changed", (data: { seatId: string; status: string }) => {
       // Invalidate query to update canvas state
       queryClient.invalidateQueries({
-        queryKey: ["availability-wizard", libraryId, date, slotTypeId],
+        queryKey: ["availability-wizard", libraryId, startDateVal, endDateVal, slotTypeId],
       });
     });
 
@@ -129,7 +133,7 @@ function BookingWizardContent() {
       socket.emit("leave-library", libraryId);
       socket.off("seat-status-changed");
     };
-  }, [socket, libraryId, date, slotTypeId, queryClient]);
+  }, [socket, libraryId, startDateVal, endDateVal, slotTypeId, queryClient]);
 
   // Hold Timer countdown hook
   useEffect(() => {
@@ -162,6 +166,15 @@ function BookingWizardContent() {
     return library?.slotTypes.find((s) => s.id === slotTypeId);
   }, [library, slotTypeId]);
 
+  const datesCount = useMemo(() => {
+    if (!startDateVal || !endDateVal) return 1;
+    const s = new Date(startDateVal);
+    const e = new Date(endDateVal);
+    const diffTime = Math.abs(e.getTime() - s.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return isNaN(diffDays) ? 1 : diffDays;
+  }, [startDateVal, endDateVal]);
+
   // Select Seat (Step 2)
   const handleSeatSelect = async (seatId: string) => {
     setError(null);
@@ -176,7 +189,7 @@ function BookingWizardContent() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ slotTypeId, date }),
+          body: JSON.stringify({ slotTypeId, startDate: startDateVal, endDate: endDateVal }),
         });
         setSelectedSeatId(null);
         setSelectedSeatCode(null);
@@ -196,7 +209,7 @@ function BookingWizardContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ seatId, slotTypeId, date }),
+        body: JSON.stringify({ seatId, slotTypeId, startDate: startDateVal, endDate: endDateVal }),
       });
 
       const data = await response.json();
@@ -231,7 +244,7 @@ function BookingWizardContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ seatId: selectedSeatId, slotTypeId, date }),
+        body: JSON.stringify({ seatId: selectedSeatId, slotTypeId, startDate: startDateVal, endDate: endDateVal }),
       });
 
       const data = await response.json();
@@ -250,7 +263,8 @@ function BookingWizardContent() {
 
   const currentLibraryName = library?.name || "Study Library";
   const seatCodeDisplay = selectedSeatCode || "Not selected";
-  const slotPrice = selectedSlot ? Number(selectedSlot.price) : 0;
+  const basePrice = selectedSlot ? Number(selectedSlot.price) : 0;
+  const slotPrice = basePrice * datesCount;
   const serviceFee = Number((slotPrice * 0.1).toFixed(2)); // 10%
   const totalPrice = slotPrice + serviceFee;
 
@@ -306,9 +320,26 @@ function BookingWizardContent() {
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3.5">
                 <div className="flex items-center gap-3 text-sm text-gray-700">
                   <Calendar className="w-5 h-5 text-brand shrink-0" />
-                  <div>
-                    <p className="font-bold text-gray-950">Access Date</p>
-                    <p className="text-xs text-gray-500">{new Date(date).toDateString()}</p>
+                  <div className="grid grid-cols-2 gap-4 flex-grow">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 block tracking-wide mb-1">Start Stay Date</label>
+                      <input 
+                        type="date" 
+                        value={startDateVal}
+                        onChange={(e) => setStartDateVal(e.target.value)}
+                        className="w-full text-xs p-2 border border-gray-300 rounded-lg outline-none font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-400 block tracking-wide mb-1">End Stay Date</label>
+                      <input 
+                        type="date" 
+                        value={endDateVal}
+                        min={startDateVal}
+                        onChange={(e) => setEndDateVal(e.target.value)}
+                        className="w-full text-xs p-2 border border-gray-300 rounded-lg outline-none font-bold"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-gray-700">
@@ -510,7 +541,12 @@ function BookingWizardContent() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-semibold">Reservation Date</span>
-                  <span className="font-bold text-gray-900">{new Date(date).toLocaleDateString()}</span>
+                  <span className="font-bold text-gray-900">
+                    {startDateVal === endDateVal 
+                      ? new Date(startDateVal).toLocaleDateString()
+                      : `${new Date(startDateVal).toLocaleDateString()} - ${new Date(endDateVal).toLocaleDateString()} (${datesCount} days)`
+                    }
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500 font-semibold">Timings</span>
@@ -565,7 +601,14 @@ function BookingWizardContent() {
               <div className="border-t border-gray-100 py-4 space-y-2.5 text-xs text-gray-650 font-medium">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Date</span>
-                  <span className="text-gray-900">{date ? new Date(date).toLocaleDateString() : "--"}</span>
+                  <span className="text-gray-900">
+                    {startDateVal 
+                      ? (startDateVal === endDateVal 
+                          ? new Date(startDateVal).toLocaleDateString() 
+                          : `${new Date(startDateVal).toLocaleDateString()} - ${new Date(endDateVal).toLocaleDateString()}`)
+                      : "--"
+                    }
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Slot Type</span>
@@ -580,7 +623,9 @@ function BookingWizardContent() {
               <div className="border-t border-gray-100 pt-4 space-y-2.5 text-xs text-gray-600">
                 <div className="flex justify-between">
                   <span>Base Price</span>
-                  <span className="font-bold text-gray-900">₹{slotPrice}</span>
+                  <span className="font-bold text-gray-900">
+                    {datesCount > 1 ? `₹${basePrice} x ${datesCount} days = ` : ""}₹{slotPrice}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Service Fee (10%)</span>

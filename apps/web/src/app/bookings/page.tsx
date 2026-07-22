@@ -161,7 +161,7 @@ export default function BookingsPage() {
               day: "numeric",
             });
 
-            // Calculate key activation status and slot completeness dynamically
+            // Calculate slot completeness dynamically
             const now = new Date();
             const bookingDate = new Date(booking.date);
             const yyyy = bookingDate.getFullYear();
@@ -171,7 +171,6 @@ export default function BookingsPage() {
             const startDateTime = new Date(`${dateStr}T${booking.slotType.startTime}:00`);
             const endDateTime = new Date(`${dateStr}T${booking.slotType.endTime}:00`);
 
-            const isAccessKeyActive = now >= startDateTime && now <= endDateTime;
             const isCompleted = now > endDateTime;
 
             return (
@@ -217,24 +216,6 @@ export default function BookingsPage() {
                           Desk code: <strong className="text-slate-900 font-mono text-sm">{booking.seat.seatCode}</strong> ({booking.seat.seatType})
                         </span>
                       </div>
-                    </div>
-
-                    {/* Access Verification Key Section */}
-                    <div className="mt-4 pt-3.5 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3 bg-gray-50/70 p-3.5 rounded-xl border border-gray-150">
-                      <div>
-                        <span className="text-[10px] font-black uppercase text-gray-400 block tracking-wide">Verification Access Key</span>
-                        <code className="text-xs font-black text-slate-800 font-mono select-all bg-white px-2.5 py-1 rounded border border-gray-200 inline-block mt-0.5">{booking.accessKey || "SS-PENDING"}</code>
-                      </div>
-                      
-                      {isAccessKeyActive ? (
-                        <span className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-black bg-emerald-500 text-white shadow-sm border border-emerald-600 animate-pulse">
-                          ● Key Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                          ● Key Inactive
-                        </span>
-                      )}
                     </div>
                   </div>
 

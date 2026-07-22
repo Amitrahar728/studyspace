@@ -36,6 +36,12 @@ model Library {
   city        String
   isActive    Boolean    @default(false)
   amenities   String[]
+  latitude    Float?
+  longitude   Float?
+  chairs      Int?       @default(0)
+  tables      Int?       @default(0)
+  acs         Int?       @default(0)
+  fans        Int?       @default(0)
   createdAt   DateTime   @default(now())
   floorPlan   FloorPlan?
   slotTypes   SlotType[]

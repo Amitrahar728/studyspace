@@ -113,7 +113,7 @@ router.get("/:id", async (req, res) => {
 // POST /libraries - Create new library listing
 router.post("/", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validateBody(CreateLibrarySchema), async (req, res) => {
   try {
-    const { name, address, city, amenities, slotTypes } = req.body;
+    const { name, address, city, amenities, slotTypes, latitude, longitude, chairs, tables, acs, fans } = req.body;
 
     const library = await prisma.library.create({
       data: {
@@ -122,6 +122,12 @@ router.post("/", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validate
         address,
         city,
         amenities,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
+        chairs: chairs ? Number(chairs) : 0,
+        tables: tables ? Number(tables) : 0,
+        acs: acs ? Number(acs) : 0,
+        fans: fans ? Number(fans) : 0,
         isActive: process.env.NODE_ENV === "development", // Auto-approve in dev mode for testing!
         slotTypes: {
           create: slotTypes.map((slot: any) => ({
@@ -268,18 +274,41 @@ router.put("/:id/floorplan", authMiddleware, requireRole([Role.OWNER, Role.ADMIN
   }
 });
 
+function getDatesBetween(startDateStr: string, endDateStr: string): Date[] {
+  const start = new Date(startDateStr);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDateStr);
+  end.setHours(0, 0, 0, 0);
+  
+  const dates: Date[] = [];
+  let current = new Date(start);
+  
+  let count = 0;
+  while (current <= end && count < 100) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+    count++;
+  }
+  return dates;
+}
+
 // GET /libraries/:id/availability - Query physical seats availability on date and slot
 router.get("/:id/availability", async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, slotTypeId } = req.query;
+    const { date, startDate, endDate, slotTypeId } = req.query;
 
-    if (!date || !slotTypeId) {
-      return res.status(400).json({ message: "date and slotTypeId are required" });
+    const start = startDate ? String(startDate) : (date ? String(date) : null);
+    const end = endDate ? String(endDate) : start;
+
+    if (!start || !end || !slotTypeId) {
+      return res.status(400).json({ message: "date or startDate and slotTypeId are required" });
     }
 
-    const queryDate = new Date(String(date));
-    queryDate.setHours(0, 0, 0, 0);
+    const dates = getDatesBetween(start, end);
+    if (dates.length === 0) {
+      return res.status(400).json({ message: "Invalid date range specified" });
+    }
 
     // 1. Fetch all seats for the library floor plan
     const floorPlan = await prisma.floorPlan.findUnique({
@@ -300,12 +329,14 @@ router.get("/:id/availability", async (req, res) => {
       .filter((o) => o.seat)
       .map((o) => o.seat!);
 
-    // 2. Fetch all database bookings for this slot type and date that aren't CANCELLED
+    // 2. Fetch all database bookings for this slot type and dates that aren't CANCELLED
     const activeBookings = await prisma.booking.findMany({
       where: {
         libraryId: id,
         slotTypeId: String(slotTypeId),
-        date: queryDate,
+        date: {
+          in: dates,
+        },
         status: {
           notIn: ["CANCELLED"],
         },
@@ -319,14 +350,22 @@ router.get("/:id/availability", async (req, res) => {
     const bookedSeatIds = new Set(activeBookings.map((b) => b.seatId));
 
     // 3. For each seat, check if there is an active hold in Upstash Redis
-    // Key format: seat:hold:${seatId}:${date}:${slotTypeId}
     const availability = await Promise.all(
       seats.map(async (seat) => {
-        const redisKey = `seat:hold:${seat.id}:${String(date)}:${String(slotTypeId)}`;
-        const holdValue = await redis.get(redisKey);
-
+        let isHeld = false;
         const isBooked = bookedSeatIds.has(seat.id);
-        const isHeld = !!holdValue && !isBooked; // If booked, booking status overrides hold
+
+        if (!isBooked) {
+          for (const d of dates) {
+            const dateStr = d.toISOString().split("T")[0];
+            const redisKey = `seat:hold:${seat.id}:${dateStr}:${String(slotTypeId)}`;
+            const holdValue = await redis.get(redisKey);
+            if (holdValue) {
+              isHeld = true;
+              break;
+            }
+          }
+        }
 
         return {
           seatId: seat.id,

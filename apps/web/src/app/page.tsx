@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Search, MapPin, SlidersHorizontal, Star, ShieldAlert } from "lucide-react";
+import { useAuth } from "../context/AppContext";
 
 interface LibraryListItem {
   id: string;
@@ -24,8 +26,18 @@ interface LibraryListItem {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user?.role === "OWNER") {
+      router.push("/owner/dashboard");
+    }
+  }, [user, router]);
+
   const [cityQuery, setCityQuery] = useState("");
-  const [dateQuery, setDateQuery] = useState("");
+  const [startDateQuery, setStartDateQuery] = useState("");
+  const [endDateQuery, setEndDateQuery] = useState("");
   const [guestsQuery, setGuestsQuery] = useState(1);
   const [activeSearch, setActiveSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -113,13 +125,25 @@ export default function HomePage() {
             />
           </div>
 
-          {/* When */}
+          {/* When (From Date) */}
           <div className="flex-1 flex flex-col items-start px-5 w-full md:border-r md:border-gray-200">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">When</label>
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">From Date</label>
             <input
               type="date"
-              value={dateQuery}
-              onChange={(e) => setDateQuery(e.target.value)}
+              value={startDateQuery}
+              onChange={(e) => setStartDateQuery(e.target.value)}
+              className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-medium"
+            />
+          </div>
+
+          {/* When (To Date) */}
+          <div className="flex-1 flex flex-col items-start px-5 w-full md:border-r md:border-gray-200">
+            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">To Date</label>
+            <input
+              type="date"
+              value={endDateQuery}
+              min={startDateQuery}
+              onChange={(e) => setEndDateQuery(e.target.value)}
               className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-medium"
             />
           </div>
@@ -254,7 +278,7 @@ export default function HomePage() {
 
                 return (
                   <Link
-                    href={`/libraries/${lib.id}${dateQuery ? `?date=${dateQuery}` : ""}`}
+                    href={`/libraries/${lib.id}${startDateQuery ? `?startDate=${startDateQuery}&endDate=${endDateQuery}` : ""}`}
                     key={lib.id}
                     className="group bg-white border border-gray-150 border-gray-100 rounded-2xl overflow-hidden card-hover-effect flex flex-col shadow-sm cursor-pointer"
                   >

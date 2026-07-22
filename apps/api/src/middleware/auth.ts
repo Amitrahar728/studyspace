@@ -27,7 +27,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     req.user = decoded;
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired access token" });
+    return res.status(401).json({ message: "Your login session has expired. Please log in again." });
   }
 }
 

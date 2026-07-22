@@ -23,16 +23,42 @@ async function getSeatLibraryInfo(seatId: string) {
   });
 }
 
-// POST /bookings/hold - Place temporary Redis-backed hold on seat
+function getDatesBetween(startDateStr: string, endDateStr: string): Date[] {
+  const start = new Date(startDateStr);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDateStr);
+  end.setHours(0, 0, 0, 0);
+  
+  const dates: Date[] = [];
+  let current = new Date(start);
+  
+  let count = 0;
+  while (current <= end && count < 100) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+    count++;
+  }
+  return dates;
+}
+
+// POST /bookings/hold - Place temporary Redis-backed hold on seat (supports ranges)
 router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req, res) => {
   try {
     const io = req.app.get("io");
-    const { seatId, slotTypeId, date } = req.body;
+    const { seatId, slotTypeId, date, startDate, endDate } = req.body;
     const userId = req.user!.userId;
 
-    const queryDate = new Date(date);
-    queryDate.setHours(0, 0, 0, 0);
-    const dateStr = queryDate.toISOString().split("T")[0]; // YYYY-MM-DD
+    const start = startDate || date;
+    const end = endDate || start;
+
+    if (!start) {
+      return res.status(400).json({ message: "date or startDate is required" });
+    }
+
+    const dates = getDatesBetween(start, end);
+    if (dates.length === 0) {
+      return res.status(400).json({ message: "Invalid date range specified" });
+    }
 
     // 1. Fetch seat and verify library
     const seatInfo = await getSeatLibraryInfo(seatId);
@@ -41,12 +67,14 @@ router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req
     }
     const libraryId = seatInfo.layoutObject.floorPlan.libraryId;
 
-    // 2. Check if seat is already booked in database
+    // 2. Check if seat is already booked in database for any date in the range
     const existingBooking = await prisma.booking.findFirst({
       where: {
         seatId,
         slotTypeId,
-        date: queryDate,
+        date: {
+          in: dates,
+        },
         status: {
           in: [BookingStatus.PENDING_PAYMENT, BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
         },
@@ -54,22 +82,29 @@ router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req
     });
 
     if (existingBooking) {
-      return res.status(409).json({ message: "This seat is already booked for this date and slot." });
+      return res.status(409).json({ message: "This seat is already booked for one or more dates in this range." });
     }
 
-    // 3. Acquire temporary hold in Redis (10 minutes TTL)
-    const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+    // 3. Check Redis holds for all dates
     const holdDuration = 600; // 10 minutes in seconds
-
-    // Set NX (only if not exists)
-    const acquired = await redis.set(redisKey, userId, "EX", holdDuration, "NX");
-    if (!acquired) {
-      return res.status(409).json({ message: "Seat is currently held by another user." });
+    for (const d of dates) {
+      const dateStr = d.toISOString().split("T")[0];
+      const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+      const holdOwner = await redis.get(redisKey);
+      if (holdOwner && holdOwner !== userId) {
+        return res.status(409).json({ message: `Seat is currently held on ${dateStr} by another user.` });
+      }
     }
 
+    // 4. Acquire Redis holds
     const expiresAt = new Date(Date.now() + holdDuration * 1000);
+    for (const d of dates) {
+      const dateStr = d.toISOString().split("T")[0];
+      const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+      await redis.set(redisKey, userId, "EX", holdDuration);
+    }
 
-    // 4. Broadcast update via Socket.io
+    // 5. Broadcast update via Socket.io
     io.to(libraryId).emit("seat-status-changed", {
       seatId,
       status: "HELD",
@@ -88,35 +123,31 @@ router.post("/hold", authMiddleware, validateBody(BookingHoldSchema), async (req
   }
 });
 
-// POST /bookings/:id/release - Release seat hold (where :id is the seatId)
+// POST /bookings/:id/release - Release seat hold (where :id is the seatId, supports ranges)
 router.post("/:id/release", authMiddleware, async (req, res) => {
   try {
     const io = req.app.get("io");
     const seatId = req.params.id;
-    const { slotTypeId, date } = req.body;
+    const { slotTypeId, date, startDate, endDate } = req.body;
     const userId = req.user!.userId;
 
-    if (!slotTypeId || !date) {
+    const start = startDate || date;
+    const end = endDate || start;
+
+    if (!slotTypeId || !start) {
       return res.status(400).json({ message: "slotTypeId and date are required to release hold" });
     }
 
-    const queryDate = new Date(date);
-    queryDate.setHours(0, 0, 0, 0);
-    const dateStr = queryDate.toISOString().split("T")[0];
+    const dates = getDatesBetween(start, end);
 
-    const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
-    const holdUser = await redis.get(redisKey);
-
-    if (!holdUser) {
-      return res.status(404).json({ message: "No active hold found for this seat." });
+    for (const d of dates) {
+      const dateStr = d.toISOString().split("T")[0];
+      const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+      const holdUser = await redis.get(redisKey);
+      if (holdUser && holdUser === userId) {
+        await redis.del(redisKey);
+      }
     }
-
-    if (holdUser !== userId) {
-      return res.status(403).json({ message: "You do not own the hold on this seat." });
-    }
-
-    // Release Redis lock
-    await redis.del(redisKey);
 
     // Broadcast update via Socket.io
     const seatInfo = await getSeatLibraryInfo(seatId);
@@ -136,20 +167,26 @@ router.post("/:id/release", authMiddleware, async (req, res) => {
   }
 });
 
-// POST /bookings - Create final booking (Stubbed Payment Flow)
+// POST /bookings - Create final booking (Stubbed Payment Flow, supports ranges)
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const io = req.app.get("io");
-    const { seatId, slotTypeId, date } = req.body;
+    const { seatId, slotTypeId, date, startDate, endDate } = req.body;
     const userId = req.user!.userId;
 
-    if (!seatId || !slotTypeId || !date) {
-      return res.status(400).json({ message: "seatId, slotTypeId, and date are required" });
+    const start = startDate || date;
+    const end = endDate || start;
+
+    if (!seatId || !slotTypeId || !start) {
+      return res.status(400).json({ message: "seatId, slotTypeId, and date/startDate are required" });
     }
 
-    const queryDate = new Date(date);
-    queryDate.setHours(0, 0, 0, 0);
-    const dateStr = queryDate.toISOString().split("T")[0];
+    const dates = getDatesBetween(start, end);
+    if (dates.length === 0) {
+      return res.status(400).json({ message: "Invalid date range specified" });
+    }
+
+    const firstDateStr = dates[0].toISOString().split("T")[0];
 
     // 1. Verify seat exists and get details
     const seatInfo = await getSeatLibraryInfo(seatId);
@@ -166,52 +203,59 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Slot type not found" });
     }
 
-    // 3. Verify hold in Redis belongs to user (or allow if admin)
-    const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
-    const holdOwner = await redis.get(redisKey);
-
-    // If hold has expired or doesn't belong to the user, check if we can still book
-    if (holdOwner && holdOwner !== userId) {
-      return res.status(409).json({ message: "Seat hold has expired or belongs to someone else." });
+    // 3. Verify holds in Redis (must not belong to someone else)
+    for (const d of dates) {
+      const dateStr = d.toISOString().split("T")[0];
+      const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+      const holdOwner = await redis.get(redisKey);
+      if (holdOwner && holdOwner !== userId) {
+        return res.status(409).json({ message: `Hold for ${dateStr} has expired or belongs to someone else.` });
+      }
     }
 
     // 4. Create booking with Database Transaction
-    const booking = await prisma.$transaction(async (tx) => {
-      // Generate a unique 8-character verification access key
-      const randKey = "SS-" + Math.random().toString(36).substring(2, 6).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-      // Create confirmed booking
-      const newBooking = await tx.booking.create({
-        data: {
-          userId,
-          libraryId,
-          seatId,
-          slotTypeId,
-          date: queryDate,
-          status: BookingStatus.CONFIRMED,
-          totalPrice: slotType.price,
-          accessKey: randKey,
-          payment: {
-            create: {
-              amount: slotType.price,
-              status: "paid",
-              gatewayRef: `mock_txn_${Date.now()}`,
+    const bookingsCreated = await prisma.$transaction(async (tx) => {
+      const createdList = [];
+      for (const d of dates) {
+        const randKey = "SS-" + Math.random().toString(36).substring(2, 6).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const newBooking = await tx.booking.create({
+          data: {
+            userId,
+            libraryId,
+            seatId,
+            slotTypeId,
+            date: d,
+            status: BookingStatus.CONFIRMED,
+            totalPrice: slotType.price,
+            accessKey: randKey,
+            payment: {
+              create: {
+                amount: slotType.price,
+                status: "paid",
+                gatewayRef: `mock_txn_${Date.now()}_${d.getTime()}`,
+              },
             },
           },
-        },
-        include: {
-          library: true,
-          seat: true,
-          slotType: true,
-          user: true,
-        },
-      });
-
-      return newBooking;
+          include: {
+            library: true,
+            seat: true,
+            slotType: true,
+            user: true,
+          },
+        });
+        createdList.push(newBooking);
+      }
+      return createdList;
     });
 
-    // 5. Delete Redis lock now that it's booked
-    await redis.del(redisKey);
+    const booking = bookingsCreated[0];
+
+    // 5. Delete Redis locks now that they are booked
+    for (const d of dates) {
+      const dateStr = d.toISOString().split("T")[0];
+      const redisKey = `seat:hold:${seatId}:${dateStr}:${slotTypeId}`;
+      await redis.del(redisKey);
+    }
 
     // 6. Broadcast updated state
     io.to(libraryId).emit("seat-status-changed", {
@@ -221,14 +265,18 @@ router.post("/", authMiddleware, async (req, res) => {
     });
 
     // 7. Send confirmation email in background
+    const dateRangeStr = dates.length > 1
+      ? `${dates[0].toLocaleDateString()} to ${dates[dates.length - 1].toLocaleDateString()} (${dates.length} days)`
+      : dates[0].toLocaleDateString();
+
     sendBookingConfirmationEmail({
       to: booking.user.email,
       studentName: booking.user.name,
       libraryName: booking.library.name,
       seatCode: booking.seat.seatCode,
-      date: dateStr,
+      date: dateRangeStr,
       slotName: booking.slotType.name,
-      price: Number(booking.totalPrice),
+      price: Number(slotType.price) * dates.length,
     }).catch((err) => console.error("Email delivery failed:", err));
 
     return res.status(201).json(booking);

@@ -1,9 +1,24 @@
 "use client";
 
 import React, { use, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Star, MapPin, Calendar, Check, ShieldAlert, Sparkles, User, ShieldCheck } from "lucide-react";
+import { 
+  Star, 
+  MapPin, 
+  Calendar, 
+  Check, 
+  ShieldAlert, 
+  Sparkles, 
+  User, 
+  ShieldCheck,
+  Wifi,
+  Wind,
+  Zap,
+  VolumeX,
+  Lock,
+  Coffee
+} from "lucide-react";
 import { useAuth } from "../../../context/AppContext";
 
 interface LibraryDetail {
@@ -36,16 +51,46 @@ interface LibraryDetail {
   reviewCount: number;
 }
 
+const amenityMap: Record<string, { label: string; icon: React.ComponentType<any> }> = {
+  "wifi": { label: "High-speed Wi-Fi", icon: Wifi },
+  "high-speed wi-fi": { label: "High-speed Wi-Fi", icon: Wifi },
+  "high-speed wifi": { label: "High-speed Wi-Fi", icon: Wifi },
+  "ac": { label: "Air Conditioning", icon: Wind },
+  "air conditioning": { label: "Air Conditioning", icon: Wind },
+  "power outlets": { label: "Power Outlets", icon: Zap },
+  "silent zone": { label: "Silent Zone", icon: VolumeX },
+  "locker": { label: "Personal Locker", icon: Lock },
+  "cafeteria": { label: "In-house Cafeteria", icon: Coffee },
+};
+
+function getAmenityDetails(amenity: string) {
+  const normalized = amenity.toLowerCase().trim();
+  if (amenityMap[normalized]) {
+    return amenityMap[normalized];
+  }
+  return { label: amenity, icon: Check };
+}
+
 export default function LibraryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const id = resolvedParams.id;
   const router = useRouter();
   const { user } = useAuth();
 
-  const [selectedDate, setSelectedDate] = useState(() => {
+  const searchParams = useSearchParams();
+
+  const [selectedStartDate, setSelectedStartDate] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split("T")[0]; // default tomorrow
+    const defaultTomorrow = tomorrow.toISOString().split("T")[0];
+    return searchParams.get("startDate") || searchParams.get("date") || defaultTomorrow;
+  });
+
+  const [selectedEndDate, setSelectedEndDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const defaultTomorrow = tomorrow.toISOString().split("T")[0];
+    return searchParams.get("endDate") || searchParams.get("date") || defaultTomorrow;
   });
 
   const [selectedSlotId, setSelectedSlotId] = useState("");
@@ -65,7 +110,7 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
   const handleProceedToBooking = () => {
     if (!selectedSlotId) return;
     router.push(
-      `/booking/wizard?libraryId=${id}&date=${selectedDate}&slotTypeId=${selectedSlotId}`
+      `/booking/wizard?libraryId=${id}&startDate=${selectedStartDate}&endDate=${selectedEndDate}&slotTypeId=${selectedSlotId}`
     );
   };
 
@@ -183,15 +228,19 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
           </div>
 
           {/* Amenities details */}
-          <div className="border-b border-gray-100 pb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">What this space offers</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {library.amenities.map((amenity) => (
-                <div key={amenity} className="flex items-center gap-3 text-sm text-gray-700">
-                  <Check className="w-5 h-5 text-emerald-600 bg-emerald-50 p-0.5 rounded-full shrink-0" />
-                  {amenity}
-                </div>
-              ))}
+          <div className="border-b border-gray-250 border-gray-200 pb-6 pt-2">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 tracking-tight">What this place offers</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-5 gap-x-12">
+              {library.amenities.map((amenity) => {
+                const details = getAmenityDetails(amenity);
+                const IconComponent = details.icon;
+                return (
+                  <div key={amenity} className="flex items-center gap-4 text-gray-850 text-base">
+                    <IconComponent className="w-[22px] h-[22px] text-gray-900 stroke-[1.5] shrink-0" />
+                    <span className="font-normal text-gray-800">{details.label}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -282,19 +331,42 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
             <div className="border border-gray-300 rounded-xl overflow-hidden mb-5">
               
               {/* Date selection */}
-              <div className="p-3 border-b border-gray-300">
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
-                  Select Date
-                </label>
-                <div className="flex items-center gap-2 text-sm text-gray-800 font-semibold cursor-pointer">
-                  <Calendar className="w-4 h-4 text-brand" />
-                  <input
-                    type="date"
-                    min={new Date().toISOString().split("T")[0]}
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="outline-none bg-transparent w-full text-gray-850"
-                  />
+              <div className="grid grid-cols-2 border-b border-gray-300">
+                <div className="p-3 border-r border-gray-300">
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                    From Date
+                  </label>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-800 font-semibold cursor-pointer">
+                    <Calendar className="w-3.5 h-3.5 text-brand shrink-0" />
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                      value={selectedStartDate}
+                      onChange={(e) => {
+                        setSelectedStartDate(e.target.value);
+                        if (new Date(e.target.value) > new Date(selectedEndDate)) {
+                          setSelectedEndDate(e.target.value);
+                        }
+                      }}
+                      className="outline-none bg-transparent w-full text-gray-850 text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3">
+                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                    To Date
+                  </label>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-800 font-semibold cursor-pointer">
+                    <Calendar className="w-3.5 h-3.5 text-brand shrink-0" />
+                    <input
+                      type="date"
+                      min={selectedStartDate}
+                      value={selectedEndDate}
+                      onChange={(e) => setSelectedEndDate(e.target.value)}
+                      className="outline-none bg-transparent w-full text-gray-850 text-xs font-bold"
+                    />
+                  </div>
                 </div>
               </div>
 
