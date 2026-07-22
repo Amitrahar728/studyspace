@@ -6,10 +6,17 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "../context/AppContext";
 import { Search, Menu, User, LogOut, Compass, LayoutDashboard, Settings, MapPin } from "lucide-react";
 
+import OwnerNavbar from "./OwnerNavbar";
+
 export default function Navbar() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  
+  if (user?.role === "OWNER") {
+    return <OwnerNavbar />;
+  }
+  
   const isHome = pathname === "/";
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -18,7 +25,8 @@ export default function Navbar() {
 
   // Search overlay inputs
   const [cityVal, setCityVal] = useState("");
-  const [dateVal, setDateVal] = useState("");
+  const [startDateVal, setStartDateVal] = useState("");
+  const [endDateVal, setEndDateVal] = useState("");
   const [guestsVal, setGuestsVal] = useState(1);
 
   // Suggestions state
@@ -67,7 +75,8 @@ export default function Navbar() {
     
     const params = new URLSearchParams();
     if (cityVal) params.set("city", cityVal);
-    if (dateVal) params.set("date", dateVal);
+    if (startDateVal) params.set("startDate", startDateVal);
+    if (endDateVal) params.set("endDate", endDateVal);
     if (guestsVal) params.set("guests", String(guestsVal));
 
     router.push(`/?${params.toString()}`);
@@ -108,14 +117,6 @@ export default function Navbar() {
 
         {/* User Actions */}
         <div className="flex items-center gap-4">
-          {user?.role === "OWNER" && (
-            <Link
-              href="/owner/dashboard"
-              className="hidden lg:inline-block text-sm font-semibold text-gray-700 hover:bg-gray-55/10 hover:bg-gray-50 px-4 py-2.5 rounded-full transition"
-            >
-              Host Dashboard
-            </Link>
-          )}
           {user?.role === "ADMIN" && (
             <Link
               href="/admin/dashboard"
@@ -161,16 +162,7 @@ export default function Navbar() {
                       <Compass className="w-4 h-4 text-gray-500" />
                       My Bookings
                     </Link>
-                    {user.role === "OWNER" && (
-                      <Link
-                        href="/owner/dashboard"
-                        onClick={() => setDropdownOpen(false)}
-                        className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
-                      >
-                        <LayoutDashboard className="w-4 h-4 text-gray-500" />
-                        Host Dashboard
-                      </Link>
-                    )}
+
                     {user.role === "ADMIN" && (
                       <Link
                         href="/admin/dashboard"
@@ -310,13 +302,25 @@ export default function Navbar() {
                     )}
                   </div>
 
-                  {/* When */}
-                  <div className="flex-1 flex flex-col items-start px-6 border-l border-r border-gray-200 cursor-pointer">
-                    <label className="text-[9px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">When</label>
+                  {/* When (From Date) */}
+                  <div className="flex-1 flex flex-col items-start px-6 border-l border-gray-200 cursor-pointer">
+                    <label className="text-[9px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">From Date</label>
                     <input
                       type="date"
-                      value={dateVal}
-                      onChange={(e) => setDateVal(e.target.value)}
+                      value={startDateVal}
+                      onChange={(e) => setStartDateVal(e.target.value)}
+                      className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-bold"
+                    />
+                  </div>
+
+                  {/* When (To Date) */}
+                  <div className="flex-1 flex flex-col items-start px-6 border-l border-r border-gray-200 cursor-pointer">
+                    <label className="text-[9px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">To Date</label>
+                    <input
+                      type="date"
+                      value={endDateVal}
+                      min={startDateVal}
+                      onChange={(e) => setEndDateVal(e.target.value)}
                       className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-bold"
                     />
                   </div>

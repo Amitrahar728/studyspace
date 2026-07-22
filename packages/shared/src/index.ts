@@ -70,6 +70,12 @@ export const CreateLibrarySchema = z.object({
   city: z.string().min(2, "City is required"),
   amenities: z.array(z.string()).default([]),
   slotTypes: z.array(SlotTypeSchema).min(1, "At least one slot type is required"),
+  latitude: z.number().optional().nullable(),
+  longitude: z.number().optional().nullable(),
+  chairs: z.number().min(0).default(0).optional(),
+  tables: z.number().min(0).default(0).optional(),
+  acs: z.number().min(0).default(0).optional(),
+  fans: z.number().min(0).default(0).optional(),
 });
 export type CreateLibraryInput = z.infer<typeof CreateLibrarySchema>;
 
@@ -111,7 +117,13 @@ export const BookingHoldSchema = z.object({
   slotTypeId: z.string().min(1, "Slot Type ID is required"),
   date: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Invalid date format",
-  }),
+  }).optional(),
+  startDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: "Invalid startDate format",
+  }).optional(),
+  endDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: "Invalid endDate format",
+  }).optional(),
 });
 export type BookingHoldInput = z.infer<typeof BookingHoldSchema>;
 
