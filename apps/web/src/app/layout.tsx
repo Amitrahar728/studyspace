@@ -2,6 +2,7 @@ import React from "react";
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppProvider } from "../context/AppContext";
+import { ToastProvider } from "../context/ToastContext";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
@@ -27,9 +28,11 @@ export default function RootLayout({
       </head>
       <body className="flex flex-col min-h-screen bg-white">
         <AppProvider>
-          <Navbar />
-          <main className="flex-grow">{children}</main>
-          <Footer />
+          <ToastProvider>
+            <Navbar />
+            <main className="flex-grow">{children}</main>
+            <Footer />
+          </ToastProvider>
         </AppProvider>
       </body>
     </html>

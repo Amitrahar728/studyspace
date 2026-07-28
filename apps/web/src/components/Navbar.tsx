@@ -3,25 +3,23 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useAuth } from "../context/AppContext";
+import { useAuth, useSocket } from "../context/AppContext";
 import { Search, Menu, User, LogOut, Compass, LayoutDashboard, Settings, MapPin } from "lucide-react";
 
 import OwnerNavbar from "./OwnerNavbar";
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
+  const { socket } = useSocket();
   const router = useRouter();
   const pathname = usePathname();
-  
-  if (user?.role === "OWNER") {
-    return <OwnerNavbar />;
-  }
-  
+
   const isHome = pathname === "/";
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Search overlay inputs
   const [cityVal, setCityVal] = useState("");
@@ -48,7 +46,7 @@ export default function Navbar() {
         setIsScrolled(true);
       } else {
         setIsScrolled(false);
-        setIsSearchExpanded(false); // Auto-collapse when user scrolls to top
+        setIsSearchExpanded(false);
       }
     };
     window.addEventListener("scroll", handleScroll);
@@ -69,10 +67,44 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Fetch unread notifications for owner & setup socket listener
+  useEffect(() => {
+    if (!user || user.role !== "OWNER" || !token) return;
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch(`${apiBase}/notifications`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadCount(data.unreadCount || 0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch unread notification count:", err);
+      }
+    };
+
+    fetchNotifications();
+
+    if (socket) {
+      socket.emit("join-user", user.id);
+      const handleNewNotification = () => {
+        setUnreadCount((prev) => prev + 1);
+      };
+      socket.on("new-notification", handleNewNotification);
+      return () => {
+        socket.off("new-notification", handleNewNotification);
+      };
+    }
+  }, [user, token, socket]);
+
   const handleOverlaySearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSearchExpanded(false);
-    
+
     const params = new URLSearchParams();
     if (cityVal) params.set("city", cityVal);
     if (startDateVal) params.set("startDate", startDateVal);
@@ -85,20 +117,20 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-40 w-full bg-white border-b border-gray-100 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-        
+
         {/* Logo */}
-        <Link href="/" onClick={() => setIsSearchExpanded(false)} className="flex items-center gap-2 shrink-0">
+        <Link href={user?.role === "OWNER" ? "/owner/dashboard" : "/"} onClick={() => setIsSearchExpanded(false)} className="flex items-center gap-2 shrink-0">
           <span className="text-2xl font-black text-brand tracking-tight flex items-center gap-1">
             <span className="bg-brand text-white p-1.5 rounded-lg flex items-center justify-center font-serif text-lg leading-none">S</span>
             StudySpace
           </span>
         </Link>
 
-        {/* Center Search Pill - Airbnb styling (Always show on subpages, scroll-revealed on home) */}
-        {(!isHome || isScrolled) && !isSearchExpanded && (
+        {/* Center Search Pill - Airbnb styling (Only visible for logged-in Students) */}
+        {(!isHome || isScrolled) && !isSearchExpanded && user && user.role === "STUDENT" && (
           <div
             onClick={() => setIsSearchExpanded(true)}
-            className="hidden md:flex items-center border border-gray-250 border-gray-200 rounded-full py-2 px-3.5 shadow-sm hover:shadow-md transition cursor-pointer gap-2 divide-x divide-gray-200 animate-in zoom-in-95 duration-200"
+            className="hidden md:flex items-center border border-gray-200 rounded-full py-2 px-3.5 shadow-sm hover:shadow-md transition cursor-pointer gap-2 divide-x divide-gray-200 animate-in zoom-in-95 duration-200"
           >
             <button className="px-3 text-xs font-bold text-gray-800">Anywhere</button>
             <button className="px-3 text-xs font-bold text-gray-800">Anytime</button>
@@ -111,38 +143,37 @@ export default function Navbar() {
           </div>
         )}
 
-        {isSearchExpanded && (
-          <div className="hidden md:block w-96" /> // Placeholder spacing spacer
+        {isSearchExpanded && user && user.role === "STUDENT" && (
+          <div className="hidden md:block w-96" />
         )}
 
         {/* User Actions */}
         <div className="flex items-center gap-4">
-          {user?.role === "ADMIN" && (
-            <Link
-              href="/admin/dashboard"
-              className="hidden lg:inline-block text-sm font-semibold text-gray-700 hover:bg-gray-50 px-4 py-2.5 rounded-full transition"
-            >
-              Admin Panel
-            </Link>
-          )}
 
           {/* User Menu Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-3 border border-gray-200 hover:shadow-md transition p-2 rounded-full cursor-pointer bg-white"
+              className="flex items-center gap-3 border border-gray-200 hover:shadow-md transition p-2 rounded-full cursor-pointer bg-white relative"
             >
               <Menu className="w-4.5 h-4.5 text-gray-600 ml-1" />
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
                   alt={user.name}
-                  className="w-7 h-7 rounded-full object-cover border border-gray-15"
+                  className="w-7 h-7 rounded-full object-cover border border-gray-150"
                 />
               ) : (
                 <div className="w-7 h-7 rounded-full bg-gray-500 text-white flex items-center justify-center font-bold text-xs">
                   {user ? user.name.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
                 </div>
+              )}
+
+              {/* Notification unread dot */}
+              {user?.role === "OWNER" && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
               )}
             </button>
 
@@ -152,17 +183,76 @@ export default function Navbar() {
                   <>
                     <div className="px-4 py-2.5 border-b border-gray-100">
                       <p className="font-semibold text-gray-900 truncate">{user.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                          {user.role}
+                        </span>
+                      </div>
                     </div>
-                    <Link
-                      href="/bookings"
-                      onClick={() => setDropdownOpen(false)}
-                      className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
-                    >
-                      <Compass className="w-4 h-4 text-gray-500" />
-                      My Bookings
-                    </Link>
 
+                    {/* Home link (Non-Owners only) */}
+                    {user.role !== "OWNER" && (
+                      <Link
+                        href="/"
+                        onClick={() => setDropdownOpen(false)}
+                        className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                      >
+                        <Compass className="w-4 h-4 text-gray-500" />
+                        Home
+                      </Link>
+                    )}
+
+                    {/* Student role links */}
+                    {user.role === "STUDENT" && (
+                      <Link
+                        href="/bookings"
+                        onClick={() => setDropdownOpen(false)}
+                        className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                      >
+                        <LayoutDashboard className="w-4 h-4 text-gray-500" />
+                        My Bookings
+                      </Link>
+                    )}
+
+                    {/* Owner role links */}
+                    {user.role === "OWNER" && (
+                      <>
+                        <Link
+                          href="/owner/dashboard"
+                          onClick={() => setDropdownOpen(false)}
+                          className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                        >
+                          <LayoutDashboard className="w-4 h-4 text-gray-500" />
+                          My Listings
+                        </Link>
+                        <Link
+                          href="/notifications"
+                          onClick={() => setDropdownOpen(false)}
+                          className="px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between transition"
+                        >
+                          <span className="flex items-center gap-3">
+                            <Settings className="w-4 h-4 text-gray-500" />
+                            Notifications
+                          </span>
+                          {unreadCount > 0 && (
+                            <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </Link>
+                        <Link
+                          href="/owner/earnings"
+                          onClick={() => setDropdownOpen(false)}
+                          className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                        >
+                          <Compass className="w-4 h-4 text-gray-500" />
+                          Earnings
+                        </Link>
+                      </>
+                    )}
+
+                    {/* Admin link */}
                     {user.role === "ADMIN" && (
                       <Link
                         href="/admin/dashboard"
@@ -173,12 +263,25 @@ export default function Navbar() {
                         Admin Panel
                       </Link>
                     )}
+
+                    {/* Profile link for all logged-in users */}
+                    <Link
+                      href="/profile"
+                      onClick={() => setDropdownOpen(false)}
+                      className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                    >
+                      <User className="w-4 h-4 text-gray-500" />
+                      Profile
+                    </Link>
+
+                    {/* Logout always last */}
                     <button
                       onClick={() => {
                         logout();
                         setDropdownOpen(false);
+                        router.push("/auth/signup");
                       }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition text-red-600 border-t border-gray-100 mt-1"
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition text-red-600 border-t border-gray-100 mt-1 cursor-pointer"
                     >
                       <LogOut className="w-4 h-4" />
                       Log out
@@ -200,14 +303,6 @@ export default function Navbar() {
                     >
                       Sign up
                     </Link>
-                    <hr className="my-1 border-gray-100" />
-                    <Link
-                      href="/auth/signup?role=OWNER"
-                      onClick={() => setDropdownOpen(false)}
-                      className="block px-4 py-2.5 hover:bg-gray-50 text-gray-600 transition"
-                    >
-                      Become a Host
-                    </Link>
                   </>
                 )}
               </div>
@@ -217,8 +312,8 @@ export default function Navbar() {
 
       </div>
 
-      {/* Expanded Search Popout Overlay Panel */}
-      {isSearchExpanded && (
+      {/* Expanded Search Popout Overlay Panel (Only for logged-in Students) */}
+      {isSearchExpanded && user && user.role === "STUDENT" && (
         <>
           {/* Backdrop overlay blur background */}
           <div

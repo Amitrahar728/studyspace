@@ -8,17 +8,26 @@ generator client {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String
-  email         String    @unique
-  passwordHash  String
-  role          Role      @default(STUDENT)
-  phone         String?
-  avatarUrl     String?
-  createdAt     DateTime  @default(now())
-  bookings      Booking[]
-  libraries     Library[] @relation("OwnerLibraries")
-  reviews       Review[]
+  id             String         @id @default(cuid())
+  name           String
+  email          String         @unique
+  passwordHash   String
+  role           Role           @default(STUDENT)
+  phone          String?
+  avatarUrl      String?
+  bio            String?
+  occupation     String?
+  hobbies        String?
+  currentlyDoing String?
+  targetGoal     String?
+  businessInfo   String?
+  experience     String?
+  description    String?
+  createdAt      DateTime       @default(now())
+  bookings       Booking[]
+  libraries      Library[]      @relation("OwnerLibraries")
+  reviews        Review[]
+  notifications  Notification[]
 }
 
 enum Role {
@@ -165,4 +174,16 @@ model Review {
   rating      Int
   comment     String?
   createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO")
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
 }

@@ -12,6 +12,8 @@ import bookingRouter from "./routes/bookings";
 import paymentRouter from "./routes/payments";
 import reviewRouter from "./routes/reviews";
 import adminRouter from "./routes/admin";
+import notificationRouter from "./routes/notifications";
+import earningsRouter from "./routes/earnings";
 
 const app = express();
 const server = http.createServer(app);
@@ -49,11 +51,19 @@ app.use("/api/v1/libraries", libraryRouter);
 app.use("/api/v1/libraries", reviewRouter); // Mount reviews under libraries to match POST /libraries/:id/reviews
 app.use("/api/v1/bookings", bookingRouter);
 app.use("/api/v1/payments", paymentRouter);
+app.use("/api/v1/notifications", notificationRouter);
+app.use("/api/v1/owner/earnings", earningsRouter);
 app.use("/api/v1/admin", adminRouter);
 
 // Socket.io event handling
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
+
+  // Join a user channel to receive personal real-time notifications
+  socket.on("join-user", (userId: string) => {
+    socket.join(userId);
+    console.log(`Socket ${socket.id} joined user room: ${userId}`);
+  });
 
   // Join a library channel to receive real-time seat updates
   socket.on("join-library", (libraryId: string) => {

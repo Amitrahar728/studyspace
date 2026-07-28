@@ -72,6 +72,36 @@ router.post("/:id/reviews", authMiddleware, validateBody(ReviewSchema), async (r
       },
     });
 
+    // 3. Create notification for library owner
+    const library = await prisma.library.findUnique({
+      where: { id: libraryId },
+      select: { ownerId: true, name: true },
+    });
+
+    if (library) {
+      const io = req.app.get("io");
+      if (io) {
+        io.to(library.ownerId).emit("new-notification", {
+          title: "New Review Received",
+          message: `${review.user.name} left a ${rating}-star review for ${library.name}.`,
+        });
+      }
+
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: library.ownerId,
+            title: "New Review Received",
+            message: `${review.user.name} left a ${rating}-star review for ${library.name}.`,
+            type: "REVIEW",
+            link: `/libraries/${libraryId}`,
+          },
+        });
+      } catch (err) {
+        console.error("Review notification creation error:", err);
+      }
+    }
+
     return res.status(201).json(review);
   } catch (error) {
     console.error("Create review error:", error);

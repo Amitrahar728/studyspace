@@ -6,7 +6,8 @@ import { validateBody } from "../middleware/validation";
 import { SignupSchema, SigninSchema, UpdateProfileSchema } from "@studyspace/shared";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { authMiddleware } from "../middleware/auth";
-import { getPresignedDownloadUrl } from "../utils/s3";
+import { getPresignedDownloadUrl, getPresignedAvatarUploadUrl } from "../utils/s3";
+import { authRateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
@@ -23,12 +24,33 @@ const setRefreshTokenCookie = (res: any, token: string) => {
   });
 };
 
+// Check email availability (Live check)
+router.get("/check-email", async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email query param is required" });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: { id: true },
+    });
+
+    return res.json({ available: !existingUser });
+  } catch (error) {
+    console.error("Check email error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // Signup
-router.post("/signup", validateBody(SignupSchema), async (req, res) => {
+router.post("/signup", authRateLimiter(10, 900), validateBody(SignupSchema), async (req, res) => {
   try {
     const { name, email, password, role, phone } = req.body;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(400).json({ message: "User with this email already exists" });
     }
@@ -38,7 +60,7 @@ router.post("/signup", validateBody(SignupSchema), async (req, res) => {
     const user = await prisma.user.create({
       data: {
         name,
-        email,
+        email: normalizedEmail,
         passwordHash,
         role,
         phone,
@@ -68,11 +90,12 @@ router.post("/signup", validateBody(SignupSchema), async (req, res) => {
 });
 
 // Signin
-router.post("/signin", validateBody(SigninSchema), async (req, res) => {
+router.post("/signin", authRateLimiter(10, 900), validateBody(SigninSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
@@ -145,8 +168,12 @@ router.post("/logout", (req, res) => {
 // Get User Profile
 router.get("/users/me", authMiddleware, async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: req.user?.userId },
+      where: { id: req.user.userId },
       select: {
         id: true,
         name: true,
@@ -154,6 +181,14 @@ router.get("/users/me", authMiddleware, async (req, res) => {
         role: true,
         phone: true,
         avatarUrl: true,
+        bio: true,
+        occupation: true,
+        hobbies: true,
+        currentlyDoing: true,
+        targetGoal: true,
+        businessInfo: true,
+        experience: true,
+        description: true,
         createdAt: true,
       },
     });
@@ -173,14 +208,38 @@ router.get("/users/me", authMiddleware, async (req, res) => {
 // Update User Profile
 router.patch("/users/me", authMiddleware, validateBody(UpdateProfileSchema), async (req, res) => {
   try {
-    const { name, phone, avatarUrl } = req.body;
+    if (!req.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const {
+      name,
+      phone,
+      avatarUrl,
+      bio,
+      occupation,
+      hobbies,
+      currentlyDoing,
+      targetGoal,
+      businessInfo,
+      experience,
+      description,
+    } = req.body;
 
     const user = await prisma.user.update({
-      where: { id: req.user?.userId },
+      where: { id: req.user.userId },
       data: {
         ...(name !== undefined && { name }),
         ...(phone !== undefined && { phone }),
         ...(avatarUrl !== undefined && { avatarUrl }),
+        ...(bio !== undefined && { bio }),
+        ...(occupation !== undefined && { occupation }),
+        ...(hobbies !== undefined && { hobbies }),
+        ...(currentlyDoing !== undefined && { currentlyDoing }),
+        ...(targetGoal !== undefined && { targetGoal }),
+        ...(businessInfo !== undefined && { businessInfo }),
+        ...(experience !== undefined && { experience }),
+        ...(description !== undefined && { description }),
       },
       select: {
         id: true,
@@ -189,6 +248,14 @@ router.patch("/users/me", authMiddleware, validateBody(UpdateProfileSchema), asy
         role: true,
         phone: true,
         avatarUrl: true,
+        bio: true,
+        occupation: true,
+        hobbies: true,
+        currentlyDoing: true,
+        targetGoal: true,
+        businessInfo: true,
+        experience: true,
+        description: true,
         createdAt: true,
       },
     });
@@ -197,6 +264,22 @@ router.patch("/users/me", authMiddleware, validateBody(UpdateProfileSchema), asy
     return res.json({ ...user, avatarUrl: signedAvatar });
   } catch (error) {
     console.error("Update profile error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Generate Presigned S3 Avatar Upload URL
+router.post("/avatar/upload-url", authMiddleware, async (req, res) => {
+  try {
+    const { fileName, fileType } = req.body;
+    if (!fileName || !fileType) {
+      return res.status(400).json({ message: "fileName and fileType are required" });
+    }
+
+    const { uploadUrl, key } = await getPresignedAvatarUploadUrl(fileName, fileType, req.user!.userId);
+    return res.json({ uploadUrl, key });
+  } catch (error) {
+    console.error("Avatar presigned upload URL error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 });

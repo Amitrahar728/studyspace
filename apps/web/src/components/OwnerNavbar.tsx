@@ -75,7 +75,7 @@ export default function OwnerNavbar() {
                     onClick={() => {
                       logout();
                       setDropdownOpen(false);
-                      router.push("/");
+                      router.push("/auth/signup");
                     }}
                     className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-2.5 transition text-red-600 border-t border-gray-100 mt-1 font-semibold"
                   >
@@ -115,7 +115,7 @@ export default function OwnerNavbar() {
             onClick={() => {
               logout();
               setMobileMenuOpen(false);
-              router.push("/");
+              router.push("/auth/signup");
             }}
             className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-gray-50 text-sm font-bold text-red-600"
           >

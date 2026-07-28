@@ -26,6 +26,21 @@ export async function getPresignedUploadUrl(fileName: string, fileType: string):
   return { uploadUrl, key };
 }
 
+export async function getPresignedAvatarUploadUrl(fileName: string, fileType: string, userId: string): Promise<{ uploadUrl: string; key: string }> {
+  const ext = fileName.split(".").pop() || "jpg";
+  const key = `avatars/${userId}_${Date.now()}.${ext}`;
+  const bucketName = env.S3_BUCKET_NAME.trim();
+
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+    ContentType: fileType,
+  });
+
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+  return { uploadUrl, key };
+}
+
 export async function uploadFileToS3(buffer: Buffer, key: string, contentType: string): Promise<string> {
   const bucketName = env.S3_BUCKET_NAME.trim();
   const command = new PutObjectCommand({

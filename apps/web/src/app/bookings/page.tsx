@@ -118,9 +118,52 @@ export default function BookingsPage() {
     );
   }
 
+  // Tab selection state: "upcoming" or "past"
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+
+  const now = new Date();
+
+  const upcomingBookings = bookings?.filter((b) => {
+    const bDate = new Date(b.date);
+    return bDate >= new Date(now.setHours(0,0,0,0)) && b.status !== "CANCELLED";
+  }) || [];
+
+  const pastBookings = bookings?.filter((b) => {
+    const bDate = new Date(b.date);
+    return bDate < new Date(now.setHours(0,0,0,0)) || b.status === "COMPLETED" || b.status === "CANCELLED";
+  }) || [];
+
+  const displayBookings = activeTab === "upcoming" ? upcomingBookings : pastBookings;
+
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-10">
-      <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-8">My Bookings History</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">My Bookings</h1>
+
+        {/* Tab Selector */}
+        <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 self-start sm:self-auto">
+          <button
+            onClick={() => setActiveTab("upcoming")}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === "upcoming"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            Upcoming Bookings ({upcomingBookings.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("past")}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+              activeTab === "past"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            Past Bookings ({pastBookings.length})
+          </button>
+        </div>
+      </div>
 
       {isLoading && (
         <div className="space-y-4">
@@ -131,28 +174,36 @@ export default function BookingsPage() {
       )}
 
       {error && (
-        <div className="text-center py-10 text-red-650 bg-red-50 rounded-2xl">
-          Failed to load reservation data. Please verify database connection.
+        <div className="text-center py-10 text-red-600 bg-red-50 rounded-2xl border border-red-100 font-semibold">
+          Failed to load reservation data. Please verify your connection.
         </div>
       )}
 
-      {!isLoading && !error && bookings?.length === 0 && (
+      {!isLoading && !error && displayBookings.length === 0 && (
         <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl max-w-lg mx-auto">
           <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="font-bold text-gray-800 text-lg mb-1">No bookings made</h3>
-          <p className="text-sm text-gray-500 mb-6">You haven't reserved any reading desks yet.</p>
-          <button
-            onClick={() => router.push("/")}
-            className="bg-brand text-white font-semibold px-6 py-2.5 rounded-lg text-sm"
-          >
-            Find a StudySpace
-          </button>
+          <h3 className="font-bold text-gray-800 text-lg mb-1">
+            No {activeTab} bookings found
+          </h3>
+          <p className="text-sm text-gray-500 mb-6">
+            {activeTab === "upcoming"
+              ? "You don't have any upcoming study seat reservations."
+              : "You haven't completed any past study seat reservations yet."}
+          </p>
+          {activeTab === "upcoming" && (
+            <button
+              onClick={() => router.push("/")}
+              className="bg-brand hover:bg-brand-hover text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition"
+            >
+              Find a StudySpace
+            </button>
+          )}
         </div>
       )}
 
-      {!isLoading && !error && bookings && bookings.length > 0 && (
+      {!isLoading && !error && displayBookings.length > 0 && (
         <div className="space-y-6">
-          {bookings.map((booking) => {
+          {displayBookings.map((booking) => {
             const libraryPhoto = booking.library.photos[0]?.url || "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=600&q=80";
             const bookingDateStr = new Date(booking.date).toLocaleDateString(undefined, {
               weekday: "short",
@@ -161,42 +212,47 @@ export default function BookingsPage() {
               day: "numeric",
             });
 
-            // Calculate slot completeness dynamically
-            const now = new Date();
+            const currentDate = new Date();
             const bookingDate = new Date(booking.date);
             const yyyy = bookingDate.getFullYear();
             const mm = String(bookingDate.getMonth() + 1).padStart(2, "0");
             const dd = String(bookingDate.getDate()).padStart(2, "0");
             const dateStr = `${yyyy}-${mm}-${dd}`;
-            const startDateTime = new Date(`${dateStr}T${booking.slotType.startTime}:00`);
             const endDateTime = new Date(`${dateStr}T${booking.slotType.endTime}:00`);
 
-            const isCompleted = now > endDateTime;
+            const isCompleted = currentDate > endDateTime;
 
             return (
               <div
                 key={booking.id}
-                className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col md:flex-row items-stretch"
+                className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm flex flex-col md:flex-row items-stretch hover:shadow-md transition"
               >
-                {/* Lib image */}
-                <div className="w-full md:w-48 h-48 md:h-auto shrink-0 relative bg-slate-100">
+                {/* Library Image */}
+                <div className="w-full md:w-52 h-48 md:h-auto shrink-0 relative bg-slate-100">
                   <img src={libraryPhoto} alt={booking.library.name} className="w-full h-full object-cover" />
                 </div>
 
-                {/* Details */}
+                {/* Booking Details */}
                 <div className="p-6 flex-grow flex flex-col justify-between">
                   <div className="space-y-2">
                     <div className="flex justify-between items-start flex-wrap gap-2">
                       <div>
-                        <h3 className="font-bold text-gray-900 text-lg group-hover:text-brand transition">
+                        <h3 className="font-bold text-gray-900 text-lg">
                           {booking.library.name}
                         </h3>
                         <p className="text-xs text-gray-500">{booking.library.address}</p>
                       </div>
-                      <span className="text-xs font-bold uppercase py-1 px-3.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 flex items-center gap-1.5 shadow-sm">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        {booking.status}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {/* Booking Status Badge */}
+                        <span className="text-xs font-bold uppercase py-1 px-3 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 flex items-center gap-1.5 shadow-sm">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          {booking.status}
+                        </span>
+                        {/* Payment Status Badge */}
+                        <span className="text-xs font-bold uppercase py-1 px-3 rounded-full bg-blue-50 text-blue-800 border border-blue-100">
+                          Paid
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-3 text-xs text-gray-650 font-medium">
@@ -213,7 +269,7 @@ export default function BookingsPage() {
                       <div className="flex items-center gap-2 col-span-2 md:col-span-1">
                         <Armchair className="w-4 h-4 text-brand shrink-0" />
                         <span>
-                          Desk code: <strong className="text-slate-900 font-mono text-sm">{booking.seat.seatCode}</strong> ({booking.seat.seatType})
+                          Seat: <strong className="text-slate-900 font-mono text-sm">{booking.seat.seatCode}</strong> ({booking.seat.seatType})
                         </span>
                       </div>
                     </div>
@@ -222,7 +278,7 @@ export default function BookingsPage() {
                   <div className="border-t border-gray-100 pt-4 flex items-center justify-between flex-wrap gap-4 mt-4">
                     <div className="text-sm">
                       <span className="text-gray-500">Amount Paid:</span>{" "}
-                      <strong className="text-gray-950 font-black">₹{booking.totalPrice}</strong>
+                      <strong className="text-gray-950 font-black text-base">₹{booking.totalPrice}</strong>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -234,14 +290,14 @@ export default function BookingsPage() {
                       ) : isCompleted ? (
                         <button
                           onClick={() => openReviewModal(booking.libraryId)}
-                          className="text-xs font-bold text-gray-800 border border-gray-300 hover:border-gray-900 bg-white hover:bg-gray-50 px-4 py-2 rounded-xl transition cursor-pointer shadow-sm flex items-center gap-1.5 animate-in fade-in duration-200"
+                          className="text-xs font-bold text-gray-800 border border-gray-300 hover:border-gray-900 bg-white hover:bg-gray-50 px-4 py-2 rounded-xl transition cursor-pointer shadow-sm flex items-center gap-1.5"
                         >
                           <MessageSquarePlus className="w-3.5 h-3.5 text-brand" />
                           Leave a Review
                         </button>
                       ) : (
                         <span className="text-xs text-gray-400 italic">
-                          Review option available once timing ends
+                          Review option available after study slot ends
                         </span>
                       )}
                     </div>

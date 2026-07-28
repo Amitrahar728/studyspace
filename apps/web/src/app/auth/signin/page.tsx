@@ -4,10 +4,13 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../context/AppContext";
+import { useToast } from "../../../context/ToastContext";
+import { Loader2 } from "lucide-react";
 
 export default function SigninPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const { showToast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +26,7 @@ export default function SigninPage() {
       const response = await fetch(`${apiBase}/auth/signin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
 
       const data = await response.json();
@@ -32,9 +35,11 @@ export default function SigninPage() {
       }
 
       login(data.accessToken, data.user);
+      showToast(`Welcome back, ${data.user.name}!`, "success");
       router.push("/");
     } catch (err: any) {
       setError(err.message);
+      showToast(err.message || "Failed to log in", "error");
     } finally {
       setSubmitting(false);
     }
@@ -83,8 +88,9 @@ export default function SigninPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-brand hover:bg-brand-hover text-white text-sm font-semibold py-3.5 rounded-lg transition disabled:opacity-50 mt-2 cursor-pointer"
+            className="w-full bg-brand hover:bg-brand-hover text-white text-sm font-semibold py-3.5 rounded-lg transition disabled:opacity-50 mt-2 cursor-pointer flex items-center justify-center gap-2"
           >
+            {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
             {submitting ? "Signing in..." : "Log in"}
           </button>
         </form>

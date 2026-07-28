@@ -35,6 +35,10 @@ export default function HomePage() {
     }
   }, [user, router]);
 
+  if (user?.role === "OWNER") {
+    return null;
+  }
+
   const [cityQuery, setCityQuery] = useState("");
   const [startDateQuery, setStartDateQuery] = useState("");
   const [endDateQuery, setEndDateQuery] = useState("");

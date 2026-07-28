@@ -29,10 +29,10 @@ function getDatesBetween(startDateStr: string, endDateStr: string): Date[] {
   start.setHours(0, 0, 0, 0);
   const end = new Date(endDateStr);
   end.setHours(0, 0, 0, 0);
-  
+
   const dates: Date[] = [];
   let current = new Date(start);
-  
+
   let count = 0;
   while (current <= end && count < 100) {
     dates.push(new Date(current));
@@ -255,18 +255,42 @@ router.post("/", authMiddleware, async (req, res) => {
       await redis.del(redisKey);
     }
 
-    // 6. Broadcast updated state
+    const recipientEmail = (email && typeof email === "string" && email.trim()) ? email.trim() : booking.user.email;
+    const recipientName = (fullName && typeof fullName === "string" && fullName.trim()) ? fullName.trim() : booking.user.name;
+
+    // 6. Broadcast updated state & create owner notification
     if (io) {
       io.to(libraryId).emit("seat-status-changed", {
         seatId,
         status: "BOOKED",
         userId,
       });
+
+      if (booking.library && booking.library.ownerId) {
+        io.to(booking.library.ownerId).emit("new-notification", {
+          title: "New Booking Created",
+          message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}.`,
+        });
+      }
+    }
+
+    if (booking.library && booking.library.ownerId) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: booking.library.ownerId,
+            title: "New Booking Created",
+            message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}.`,
+            type: "BOOKING",
+            link: "/owner/dashboard",
+          },
+        });
+      } catch (err) {
+        console.error("Notification creation error:", err);
+      }
     }
 
     // 7. Send confirmation email to the provided booking email or account email
-    const recipientEmail = (email && typeof email === "string" && email.trim()) ? email.trim() : booking.user.email;
-    const recipientName = (fullName && typeof fullName === "string" && fullName.trim()) ? fullName.trim() : booking.user.name;
 
     const dateRangeStr = dates.length > 1
       ? `${dates[0].toLocaleDateString()} to ${dates[dates.length - 1].toLocaleDateString()} (${dates.length} days)`

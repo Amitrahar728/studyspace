@@ -3,7 +3,6 @@ import { authMiddleware } from "../middleware/auth";
 
 const router = Router();
 
-// POST /payments/create-order - Create stub order
 router.post("/create-order", authMiddleware, async (req, res) => {
   try {
     const { bookingId } = req.body;
@@ -23,7 +22,7 @@ router.post("/create-order", authMiddleware, async (req, res) => {
   }
 });
 
-// POST /payments/webhook - Webhook stub
+
 router.post("/webhook", async (req, res) => {
   return res.json({ status: "webhook_received", received: true });
 });

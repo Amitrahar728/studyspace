@@ -4,6 +4,7 @@ import redis from "../config/redis";
 import { validateBody } from "../middleware/validation";
 import { CreateLibrarySchema, FloorPlanSchema } from "@studyspace/shared";
 import { authMiddleware, requireRole } from "../middleware/auth";
+import { requireLibraryOwnership } from "../middleware/ownership";
 import { Role, ObjectType } from "@prisma/client";
 import { getPresignedUploadUrl, uploadFileToS3, getPresignedDownloadUrl } from "../utils/s3";
 
@@ -173,6 +174,58 @@ router.post("/", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validate
   }
 });
 
+// PUT /libraries/:id - Update library listing (Owner only)
+router.put("/:id", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requireLibraryOwnership, validateBody(CreateLibrarySchema), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, address, city, amenities, slotTypes, latitude, longitude, chairs, tables, acs, fans } = req.body;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.slotType.deleteMany({ where: { libraryId: id } });
+
+      return tx.library.update({
+        where: { id },
+        data: {
+          name,
+          address,
+          city,
+          amenities,
+          latitude: latitude ? Number(latitude) : null,
+          longitude: longitude ? Number(longitude) : null,
+          chairs: chairs ? Number(chairs) : 0,
+          tables: tables ? Number(tables) : 0,
+          acs: acs ? Number(acs) : 0,
+          fans: fans ? Number(fans) : 0,
+          slotTypes: {
+            create: slotTypes.map((slot: any) => ({
+              name: slot.name,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              price: slot.price,
+            })),
+          },
+        },
+        include: {
+          slotTypes: true,
+          photos: true,
+        },
+      });
+    });
+
+    const signedPhotos = await Promise.all(
+      updated.photos.map(async (p) => ({
+        ...p,
+        url: await getPresignedDownloadUrl(p.url),
+      }))
+    );
+
+    return res.json({ ...updated, photos: signedPhotos });
+  } catch (error) {
+    console.error("Update library error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // GET /libraries/:id/floorplan - Fetch floor plan
 router.get("/:id/floorplan", async (req, res) => {
   try {
@@ -201,7 +254,7 @@ router.get("/:id/floorplan", async (req, res) => {
 });
 
 // PUT /libraries/:id/floorplan - Update or Create Floor Plan layout (Owner only)
-router.put("/:id/floorplan", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validateBody(FloorPlanSchema), async (req, res) => {
+router.put("/:id/floorplan", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requireLibraryOwnership, validateBody(FloorPlanSchema), async (req, res) => {
   try {
     const { id } = req.params;
     const { canvasWidth, canvasHeight, objects } = req.body;

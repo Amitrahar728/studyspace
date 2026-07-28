@@ -28,11 +28,26 @@ export const BookingStatusEnum = z.enum([
 ]);
 export type BookingStatus = z.infer<typeof BookingStatusEnum>;
 
+// Password validation regex rules
+export const PASSWORD_RULES = {
+  minLength: 8,
+  hasUppercase: /[A-Z]/,
+  hasLowercase: /[a-z]/,
+  hasNumber: /[0-9]/,
+  hasSpecial: /[^A-Za-z0-9]/,
+};
+
 // Signup validation
 export const SignupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z
+    .string()
+    .min(PASSWORD_RULES.minLength, "Password must be at least 8 characters")
+    .regex(PASSWORD_RULES.hasUppercase, "Must contain at least one uppercase letter")
+    .regex(PASSWORD_RULES.hasLowercase, "Must contain at least one lowercase letter")
+    .regex(PASSWORD_RULES.hasNumber, "Must contain at least one numeric digit")
+    .regex(PASSWORD_RULES.hasSpecial, "Must contain at least one special character"),
   role: RoleEnum.default("STUDENT"),
   phone: z.string().optional().nullable(),
 });
@@ -49,7 +64,15 @@ export type SigninInput = z.infer<typeof SigninSchema>;
 export const UpdateProfileSchema = z.object({
   name: z.string().min(2).optional(),
   phone: z.string().optional().nullable(),
-  avatarUrl: z.string().url().optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
+  bio: z.string().optional().nullable(),
+  occupation: z.string().optional().nullable(),
+  hobbies: z.string().optional().nullable(),
+  currentlyDoing: z.string().optional().nullable(),
+  targetGoal: z.string().optional().nullable(),
+  businessInfo: z.string().optional().nullable(),
+  experience: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
 });
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 
