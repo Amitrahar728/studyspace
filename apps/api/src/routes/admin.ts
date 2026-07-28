@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../config/db";
 import { authMiddleware, requireRole } from "../middleware/auth";
 import { Role } from "@prisma/client";
+import { getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
 
@@ -26,7 +27,20 @@ router.get("/libraries", async (req, res) => {
         createdAt: "desc",
       },
     });
-    return res.json(libraries);
+
+    const formatted = await Promise.all(
+      libraries.map(async (lib) => ({
+        ...lib,
+        photos: await Promise.all(
+          lib.photos.map(async (p) => ({
+            ...p,
+            url: await getPresignedDownloadUrl(p.url),
+          }))
+        ),
+      }))
+    );
+
+    return res.json(formatted);
   } catch (error) {
     console.error("Admin fetch libraries error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -66,33 +80,31 @@ router.delete("/libraries/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    await prisma.$transaction(async (tx) => {
-      // Fetch floor plan to clear layout objects and seats
-      const floorPlan = await tx.floorPlan.findUnique({ where: { libraryId: id } });
-      if (floorPlan) {
-        const layoutObjects = await tx.layoutObject.findMany({
-          where: { floorPlanId: floorPlan.id },
-          select: { id: true },
-        });
-        const layoutObjectIds = layoutObjects.map((lo) => lo.id);
+    // Fetch floor plan to clear layout objects and seats
+    const floorPlan = await prisma.floorPlan.findUnique({ where: { libraryId: id } });
+    if (floorPlan) {
+      const layoutObjects = await prisma.layoutObject.findMany({
+        where: { floorPlanId: floorPlan.id },
+        select: { id: true },
+      });
+      const layoutObjectIds = layoutObjects.map((lo) => lo.id);
 
-        await tx.seat.deleteMany({
-          where: { layoutObjectId: { in: layoutObjectIds } },
-        });
-        await tx.layoutObject.deleteMany({
-          where: { floorPlanId: floorPlan.id },
-        });
-        await tx.floorPlan.delete({
-          where: { id: floorPlan.id },
-        });
-      }
+      await prisma.seat.deleteMany({
+        where: { layoutObjectId: { in: layoutObjectIds } },
+      });
+      await prisma.layoutObject.deleteMany({
+        where: { floorPlanId: floorPlan.id },
+      });
+      await prisma.floorPlan.delete({
+        where: { id: floorPlan.id },
+      });
+    }
 
-      await tx.libraryPhoto.deleteMany({ where: { libraryId: id } });
-      await tx.slotType.deleteMany({ where: { libraryId: id } });
-      await tx.booking.deleteMany({ where: { libraryId: id } });
-      await tx.review.deleteMany({ where: { libraryId: id } });
-      await tx.library.delete({ where: { id } });
-    });
+    await prisma.libraryPhoto.deleteMany({ where: { libraryId: id } });
+    await prisma.slotType.deleteMany({ where: { libraryId: id } });
+    await prisma.booking.deleteMany({ where: { libraryId: id } });
+    await prisma.review.deleteMany({ where: { libraryId: id } });
+    await prisma.library.delete({ where: { id } });
 
     return res.json({ message: "Library listing deleted/rejected successfully." });
   } catch (error) {

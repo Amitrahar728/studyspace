@@ -4,6 +4,7 @@ import { validateBody } from "../middleware/validation";
 import { ReviewSchema } from "@studyspace/shared";
 import { authMiddleware } from "../middleware/auth";
 import { BookingStatus } from "@prisma/client";
+import { getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
 
@@ -98,7 +99,17 @@ router.get("/:id/reviews", async (req, res) => {
       },
     });
 
-    return res.json(reviews);
+    const formatted = await Promise.all(
+      reviews.map(async (r) => ({
+        ...r,
+        user: {
+          ...r.user,
+          avatarUrl: r.user.avatarUrl ? await getPresignedDownloadUrl(r.user.avatarUrl) : null,
+        },
+      }))
+    );
+
+    return res.json(formatted);
   } catch (error) {
     console.error("Fetch reviews error:", error);
     return res.status(500).json({ message: "Internal server error" });

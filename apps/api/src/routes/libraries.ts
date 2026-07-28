@@ -5,7 +5,7 @@ import { validateBody } from "../middleware/validation";
 import { CreateLibrarySchema, FloorPlanSchema } from "@studyspace/shared";
 import { authMiddleware, requireRole } from "../middleware/auth";
 import { Role, ObjectType } from "@prisma/client";
-import { getPresignedUploadUrl, uploadFileToS3 } from "../utils/s3";
+import { getPresignedUploadUrl, uploadFileToS3, getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
 
@@ -37,25 +37,29 @@ router.get("/", async (req, res) => {
       },
     });
 
-    // Format output with rating average
-    const formatted = libraries.map((lib) => {
-      const avgRating =
-        lib.reviews.length > 0
-          ? Number((lib.reviews.reduce((sum, r) => sum + r.rating, 0) / lib.reviews.length).toFixed(2))
-          : null;
+    // Format output with rating average & presigned photo URLs
+    const formatted = await Promise.all(
+      libraries.map(async (lib) => {
+        const avgRating =
+          lib.reviews.length > 0
+            ? Number((lib.reviews.reduce((sum, r) => sum + r.rating, 0) / lib.reviews.length).toFixed(2))
+            : null;
 
-      return {
-        id: lib.id,
-        name: lib.name,
-        address: lib.address,
-        city: lib.city,
-        amenities: lib.amenities,
-        photos: lib.photos.map((p) => p.url),
-        slotTypes: lib.slotTypes,
-        rating: avgRating,
-        reviewCount: lib.reviews.length,
-      };
-    });
+        const signedPhotos = await Promise.all(lib.photos.map((p) => getPresignedDownloadUrl(p.url)));
+
+        return {
+          id: lib.id,
+          name: lib.name,
+          address: lib.address,
+          city: lib.city,
+          amenities: lib.amenities,
+          photos: signedPhotos,
+          slotTypes: lib.slotTypes,
+          rating: avgRating,
+          reviewCount: lib.reviews.length,
+        };
+      })
+    );
 
     return res.json(formatted);
   } catch (error) {
@@ -99,8 +103,27 @@ router.get("/:id", async (req, res) => {
         ? Number((library.reviews.reduce((sum, r) => sum + r.rating, 0) / library.reviews.length).toFixed(2))
         : null;
 
+    const signedPhotos = await Promise.all(
+      library.photos.map(async (p) => ({
+        ...p,
+        url: await getPresignedDownloadUrl(p.url),
+      }))
+    );
+
+    const signedReviews = await Promise.all(
+      library.reviews.map(async (r) => ({
+        ...r,
+        user: {
+          ...r.user,
+          avatarUrl: r.user.avatarUrl ? await getPresignedDownloadUrl(r.user.avatarUrl) : null,
+        },
+      }))
+    );
+
     return res.json({
       ...library,
+      photos: signedPhotos,
+      reviews: signedReviews,
       rating: avgRating,
       reviewCount: library.reviews.length,
     });
@@ -193,78 +216,75 @@ router.put("/:id/floorplan", authMiddleware, requireRole([Role.OWNER, Role.ADMIN
       return res.status(403).json({ message: "Forbidden: You do not own this library" });
     }
 
-    // Execute in a transaction to clean and rebuild layout
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Find or create FloorPlan
-      let floorPlan = await tx.floorPlan.findUnique({ where: { libraryId: id } });
-      if (!floorPlan) {
-        floorPlan = await tx.floorPlan.create({
-          data: {
-            libraryId: id,
-            canvasWidth,
-            canvasHeight,
-          },
-        });
-      } else {
-        floorPlan = await tx.floorPlan.update({
-          where: { id: floorPlan.id },
-          data: { canvasWidth, canvasHeight },
-        });
-      }
-
-      // 2. Fetch existing layout object IDs
-      const existingObjects = await tx.layoutObject.findMany({
-        where: { floorPlanId: floorPlan.id },
-        select: { id: true },
-      });
-      const existingObjectIds = existingObjects.map((o) => o.id);
-
-      // 3. Clear existing seats and layout objects
-      await tx.seat.deleteMany({
-        where: { layoutObjectId: { in: existingObjectIds } },
-      });
-      await tx.layoutObject.deleteMany({
-        where: { floorPlanId: floorPlan.id },
-      });
-
-      // 4. Create new layout objects & seats
-      for (const obj of objects) {
-        const layoutObj = await tx.layoutObject.create({
-          data: {
-            floorPlanId: floorPlan!.id,
-            type: obj.type,
-            x: obj.x,
-            y: obj.y,
-            width: obj.width,
-            height: obj.height,
-            rotation: obj.rotation,
-            zIndex: obj.zIndex,
-            label: obj.label,
-          },
-        });
-
-        if (obj.type === ObjectType.SEAT && obj.seat) {
-          await tx.seat.create({
-            data: {
-              layoutObjectId: layoutObj.id,
-              seatCode: obj.seat.seatCode,
-              seatType: obj.seat.seatType,
-              isActive: obj.seat.isActive ?? true,
-            },
-          });
-        }
-      }
-
-      return tx.floorPlan.findUnique({
-        where: { id: floorPlan.id },
-        include: {
-          objects: {
-            include: {
-              seat: true,
-            },
-          },
+    // 1. Find or create FloorPlan
+    let floorPlan = await prisma.floorPlan.findUnique({ where: { libraryId: id } });
+    if (!floorPlan) {
+      floorPlan = await prisma.floorPlan.create({
+        data: {
+          libraryId: id,
+          canvasWidth,
+          canvasHeight,
         },
       });
+    } else {
+      floorPlan = await prisma.floorPlan.update({
+        where: { id: floorPlan.id },
+        data: { canvasWidth, canvasHeight },
+      });
+    }
+
+    // 2. Fetch existing layout object IDs
+    const existingObjects = await prisma.layoutObject.findMany({
+      where: { floorPlanId: floorPlan.id },
+      select: { id: true },
+    });
+    const existingObjectIds = existingObjects.map((o) => o.id);
+
+    // 3. Clear existing seats and layout objects
+    await prisma.seat.deleteMany({
+      where: { layoutObjectId: { in: existingObjectIds } },
+    });
+    await prisma.layoutObject.deleteMany({
+      where: { floorPlanId: floorPlan.id },
+    });
+
+    // 4. Create new layout objects & seats
+    for (const obj of objects) {
+      const layoutObj = await prisma.layoutObject.create({
+        data: {
+          floorPlanId: floorPlan!.id,
+          type: obj.type,
+          x: obj.x,
+          y: obj.y,
+          width: obj.width,
+          height: obj.height,
+          rotation: obj.rotation,
+          zIndex: obj.zIndex,
+          label: obj.label,
+        },
+      });
+
+      if (obj.type === ObjectType.SEAT && obj.seat) {
+        await prisma.seat.create({
+          data: {
+            layoutObjectId: layoutObj.id,
+            seatCode: obj.seat.seatCode,
+            seatType: obj.seat.seatType,
+            isActive: obj.seat.isActive ?? true,
+          },
+        });
+      }
+    }
+
+    const result = await prisma.floorPlan.findUnique({
+      where: { id: floorPlan.id },
+      include: {
+        objects: {
+          include: {
+            seat: true,
+          },
+        },
+      },
     });
 
     return res.json(result);
@@ -418,7 +438,8 @@ router.post("/:id/photos", authMiddleware, requireRole([Role.OWNER, Role.ADMIN])
       },
     });
 
-    return res.status(201).json(photo);
+    const signedUrl = await getPresignedDownloadUrl(photo.url);
+    return res.status(201).json({ ...photo, url: signedUrl });
   } catch (error) {
     console.error("Save library photo error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -454,7 +475,8 @@ router.post(
         },
       });
 
-      return res.status(201).json(photo);
+      const signedUrl = await getPresignedDownloadUrl(photo.url);
+      return res.status(201).json({ ...photo, url: signedUrl });
     } catch (error) {
       console.error("Direct S3 upload failed:", error);
       return res.status(500).json({ message: "Internal server error" });

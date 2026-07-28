@@ -6,6 +6,7 @@ import { BookingHoldSchema } from "@studyspace/shared";
 import { authMiddleware } from "../middleware/auth";
 import { BookingStatus } from "@prisma/client";
 import { sendBookingConfirmationEmail } from "../utils/email";
+import { getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
 
@@ -171,7 +172,7 @@ router.post("/:id/release", authMiddleware, async (req, res) => {
 router.post("/", authMiddleware, async (req, res) => {
   try {
     const io = req.app.get("io");
-    const { seatId, slotTypeId, date, startDate, endDate } = req.body;
+    const { seatId, slotTypeId, date, startDate, endDate, email, fullName, phone } = req.body;
     const userId = req.user!.userId;
 
     const start = startDate || date;
@@ -213,42 +214,39 @@ router.post("/", authMiddleware, async (req, res) => {
       }
     }
 
-    // 4. Create booking with Database Transaction
-    const bookingsCreated = await prisma.$transaction(async (tx) => {
-      const createdList = [];
-      for (const d of dates) {
-        const randKey = "SS-" + Math.random().toString(36).substring(2, 6).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-        const newBooking = await tx.booking.create({
-          data: {
-            userId,
-            libraryId,
-            seatId,
-            slotTypeId,
-            date: d,
-            status: BookingStatus.CONFIRMED,
-            totalPrice: slotType.price,
-            accessKey: randKey,
-            payment: {
-              create: {
-                amount: slotType.price,
-                status: "paid",
-                gatewayRef: `mock_txn_${Date.now()}_${d.getTime()}`,
-              },
+    // 4. Create bookings sequentially
+    const createdList = [];
+    for (const d of dates) {
+      const randKey = "SS-" + Math.random().toString(36).substring(2, 6).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+      const newBooking = await prisma.booking.create({
+        data: {
+          userId,
+          libraryId,
+          seatId,
+          slotTypeId,
+          date: d,
+          status: BookingStatus.CONFIRMED,
+          totalPrice: slotType.price,
+          accessKey: randKey,
+          payment: {
+            create: {
+              amount: slotType.price,
+              status: "paid",
+              gatewayRef: `mock_txn_${Date.now()}_${d.getTime()}`,
             },
           },
-          include: {
-            library: true,
-            seat: true,
-            slotType: true,
-            user: true,
-          },
-        });
-        createdList.push(newBooking);
-      }
-      return createdList;
-    });
+        },
+        include: {
+          library: true,
+          seat: true,
+          slotType: true,
+          user: true,
+        },
+      });
+      createdList.push(newBooking);
+    }
 
-    const booking = bookingsCreated[0];
+    const booking = createdList[0];
 
     // 5. Delete Redis locks now that they are booked
     for (const d of dates) {
@@ -258,20 +256,25 @@ router.post("/", authMiddleware, async (req, res) => {
     }
 
     // 6. Broadcast updated state
-    io.to(libraryId).emit("seat-status-changed", {
-      seatId,
-      status: "BOOKED",
-      userId,
-    });
+    if (io) {
+      io.to(libraryId).emit("seat-status-changed", {
+        seatId,
+        status: "BOOKED",
+        userId,
+      });
+    }
 
-    // 7. Send confirmation email in background
+    // 7. Send confirmation email to the provided booking email or account email
+    const recipientEmail = (email && typeof email === "string" && email.trim()) ? email.trim() : booking.user.email;
+    const recipientName = (fullName && typeof fullName === "string" && fullName.trim()) ? fullName.trim() : booking.user.name;
+
     const dateRangeStr = dates.length > 1
       ? `${dates[0].toLocaleDateString()} to ${dates[dates.length - 1].toLocaleDateString()} (${dates.length} days)`
       : dates[0].toLocaleDateString();
 
     sendBookingConfirmationEmail({
-      to: booking.user.email,
-      studentName: booking.user.name,
+      to: recipientEmail,
+      studentName: recipientName,
       libraryName: booking.library.name,
       seatCode: booking.seat.seatCode,
       date: dateRangeStr,
@@ -288,7 +291,7 @@ router.post("/", authMiddleware, async (req, res) => {
         message: "Double booking blocked: This seat has already been booked for this date and slot.",
       });
     }
-    return res.status(500).json({ message: "Internal server error" });
+    return res.status(500).json({ message: error?.message || "Internal server error" });
   }
 });
 
@@ -311,7 +314,25 @@ router.get("/me", authMiddleware, async (req, res) => {
         date: "desc",
       },
     });
-    return res.json(bookings);
+    const formatted = await Promise.all(
+      bookings.map(async (b) => {
+        if (!b.library || !b.library.photos) return b;
+        const signedPhotos = await Promise.all(
+          b.library.photos.map(async (p) => ({
+            ...p,
+            url: await getPresignedDownloadUrl(p.url),
+          }))
+        );
+        return {
+          ...b,
+          library: {
+            ...b.library,
+            photos: signedPhotos,
+          },
+        };
+      })
+    );
+    return res.json(formatted);
   } catch (error) {
     console.error("Fetch my bookings error:", error);
     return res.status(500).json({ message: "Internal server error" });

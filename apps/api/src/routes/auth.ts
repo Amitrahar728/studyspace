@@ -6,6 +6,7 @@ import { validateBody } from "../middleware/validation";
 import { SignupSchema, SigninSchema, UpdateProfileSchema } from "@studyspace/shared";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { authMiddleware } from "../middleware/auth";
+import { getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
 
@@ -161,7 +162,8 @@ router.get("/users/me", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    return res.json(user);
+    const signedAvatar = user.avatarUrl ? await getPresignedDownloadUrl(user.avatarUrl) : null;
+    return res.json({ ...user, avatarUrl: signedAvatar });
   } catch (error) {
     console.error("Get profile error:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -191,7 +193,8 @@ router.patch("/users/me", authMiddleware, validateBody(UpdateProfileSchema), asy
       },
     });
 
-    return res.json(user);
+    const signedAvatar = user.avatarUrl ? await getPresignedDownloadUrl(user.avatarUrl) : null;
+    return res.json({ ...user, avatarUrl: signedAvatar });
   } catch (error) {
     console.error("Update profile error:", error);
     return res.status(500).json({ message: "Internal server error" });

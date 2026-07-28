@@ -1,8 +1,8 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import env from "../config/env";
 
-const s3Client = new S3Client({
+export const s3Client = new S3Client({
   region: env.AWS_REGION,
   credentials: {
     accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -38,3 +38,47 @@ export async function uploadFileToS3(buffer: Buffer, key: string, contentType: s
   await s3Client.send(command);
   return `https://${bucketName}.s3.${env.AWS_REGION.trim()}.amazonaws.com/${key}`;
 }
+
+export async function getPresignedDownloadUrl(urlOrKey: string | null | undefined): Promise<string> {
+  if (!urlOrKey) return "";
+
+  if (urlOrKey.startsWith("http://") || urlOrKey.startsWith("https://")) {
+    const bucketName = env.S3_BUCKET_NAME.trim();
+    const isS3Url = urlOrKey.includes(".amazonaws.com") || (bucketName && urlOrKey.includes(bucketName));
+
+    if (!isS3Url) {
+      return urlOrKey; // Return external non-S3 URLs (e.g., Unsplash) as is
+    }
+
+    if (urlOrKey.includes("X-Amz-Signature") || urlOrKey.includes("X-Amz-Algorithm")) {
+      return urlOrKey; // Already presigned URL
+    }
+
+    try {
+      const urlObj = new URL(urlOrKey);
+      const key = decodeURIComponent(urlObj.pathname.slice(1));
+      if (!key) return urlOrKey;
+      return await generatePresignedGetUrl(key);
+    } catch {
+      return urlOrKey;
+    }
+  }
+
+  return await generatePresignedGetUrl(urlOrKey);
+}
+
+async function generatePresignedGetUrl(key: string): Promise<string> {
+  try {
+    const bucketName = env.S3_BUCKET_NAME.trim();
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    });
+    // Presigned GET URL valid for 24 hours (86400 seconds)
+    return await getSignedUrl(s3Client, command, { expiresIn: 86400 });
+  } catch (error) {
+    console.error("Error generating presigned download URL for key:", key, error);
+    return key;
+  }
+}
+

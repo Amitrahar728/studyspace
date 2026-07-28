@@ -244,7 +244,15 @@ function BookingWizardContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ seatId: selectedSeatId, slotTypeId, startDate: startDateVal, endDate: endDateVal }),
+        body: JSON.stringify({
+          seatId: selectedSeatId,
+          slotTypeId,
+          startDate: startDateVal,
+          endDate: endDateVal,
+          email,
+          fullName,
+          phone,
+        }),
       });
 
       const data = await response.json();

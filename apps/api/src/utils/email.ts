@@ -67,11 +67,15 @@ export async function sendBookingConfirmationEmail(params: EmailParams) {
   };
 
   try {
+    if (!to || !to.includes("@")) {
+      console.warn("Invalid or missing email recipient address:", to);
+      return null;
+    }
     const info = await transporter.sendMail(mailOptions);
-    console.log("Confirmation email sent via SES SMTP:", info.messageId);
+    console.log(`Confirmation email sent to ${to} via SES SMTP:`, info.messageId);
     return info;
-  } catch (error) {
-    console.error("Error sending confirmation email via SES SMTP:", error);
-    throw error;
+  } catch (error: any) {
+    console.error(`Error sending confirmation email to ${to} via SES SMTP:`, error?.message || error);
+    return null;
   }
 }
