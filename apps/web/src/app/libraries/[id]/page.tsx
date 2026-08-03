@@ -17,7 +17,8 @@ import {
   Zap,
   VolumeX,
   Lock,
-  Coffee
+  Coffee,
+  MessageSquare
 } from "lucide-react";
 import { useAuth } from "../../../context/AppContext";
 
@@ -29,6 +30,13 @@ interface LibraryDetail {
   amenities: string[];
   isActive: boolean;
   createdAt: string;
+  ownerId?: string;
+  owner?: {
+    id: string;
+    name: string;
+    avatarUrl: string | null;
+    email?: string;
+  };
   photos: { id: string; url: string }[];
   slotTypes: {
     id: string;
@@ -195,18 +203,37 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
         <div className="lg:col-span-2 space-y-8">
           
           {/* Host header */}
-          <div className="border-b border-gray-100 pb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-1">
-                Hosted study room
-              </h2>
-              <p className="text-sm text-gray-500">
-                Self-study access with slot bookings, specific desk assignments & quiet space.
-              </p>
+          <div className="border-b border-gray-100 pb-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-brand/5 text-brand flex items-center justify-center font-bold text-lg border border-brand/10 shrink-0">
+                {library.owner?.name ? library.owner.name.charAt(0).toUpperCase() : library.name.charAt(0)}
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 mb-0.5">
+                  Hosted by {library.owner?.name || "Library Host"}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Self-study access with slot bookings, specific desk assignments & quiet space.
+                </p>
+              </div>
             </div>
-            <div className="w-12 h-12 rounded-full bg-brand/5 text-brand flex items-center justify-center font-bold text-lg border border-brand/10">
-              {library.name.charAt(0)}
-            </div>
+
+            {(library.owner?.id || library.ownerId) && (
+              <button
+                onClick={() => {
+                  const targetOwnerId = library.owner?.id || library.ownerId;
+                  if (!user) {
+                    router.push("/auth/signin");
+                    return;
+                  }
+                  router.push(`/messages?userId=${targetOwnerId}`);
+                }}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl font-semibold text-xs transition flex items-center gap-2 shadow-sm shrink-0 cursor-pointer"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                Chat with Host
+              </button>
+            )}
           </div>
 
           {/* Core highlights */}

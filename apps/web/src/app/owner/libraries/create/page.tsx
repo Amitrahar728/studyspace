@@ -45,8 +45,6 @@ export default function CreateLibraryWizard() {
   const [stateName, setStateName] = useState("");
   const [pinCode, setPinCode] = useState("");
   const [landmark, setLandmark] = useState("");
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
 
   // STEP 2: Amenities States
   const [amenities, setAmenities] = useState<string[]>([]);
@@ -135,20 +133,6 @@ export default function CreateLibraryWizard() {
     );
   };
 
-  // Mock Map Coordinate Selector
-  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Simulate coordinates based on click percentages
-    const simulatedLat = Number((28.4595 + (y / rect.height - 0.5) * 0.1).toFixed(6));
-    const simulatedLng = Number((77.0266 + (x / rect.width - 0.5) * 0.1).toFixed(6));
-
-    setLatitude(simulatedLat);
-    setLongitude(simulatedLng);
-  };
-
   // Submit Listing Handler
   const handleSubmitListing = async () => {
     if (photos.length !== 5) {
@@ -175,8 +159,6 @@ export default function CreateLibraryWizard() {
           city,
           address: fullAddress,
           amenities,
-          latitude,
-          longitude,
           chairs,
           tables,
           acs,
@@ -198,8 +180,6 @@ export default function CreateLibraryWizard() {
       const libraryId = data.id;
 
       // 2. Upload all 5 photos to S3
-      // We will upload the files sequentially.
-      // Reorder photos array so the Cover photo is uploaded FIRST (becomes the first photo item in S3 array)
       const sortedPhotos = [...photos].sort((a, b) => (b.isCover ? 1 : 0) - (a.isCover ? 1 : 0));
 
       for (const p of sortedPhotos) {
@@ -228,10 +208,6 @@ export default function CreateLibraryWizard() {
         setFormError("Please fill out all location address fields.");
         return;
       }
-      if (latitude === null || longitude === null) {
-        setFormError("Please click on the map to drop a pin and verify your coordinates.");
-        return;
-      }
     }
     if (step === 4) {
       if (photos.length !== 5) {
@@ -246,15 +222,29 @@ export default function CreateLibraryWizard() {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
       {/* Top Navbar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="bg-brand text-white p-1.5 rounded-lg text-sm font-black font-serif leading-none">H</span>
-          <span className="font-extrabold text-gray-800 text-sm">Add New Listing Wizard</span>
-        </div>
         <button
-          onClick={() => router.push("/owner/dashboard")}
-          className="text-xs font-semibold text-gray-500 hover:text-gray-900 border border-gray-200 hover:border-gray-400 bg-white px-4 py-2 rounded-xl transition"
+          type="button"
+          onClick={() => {
+            if (step > 1) {
+              setStep(step - 1);
+            } else {
+              router.push("/owner/dashboard");
+            }
+          }}
+          className="flex items-center gap-2 text-xs font-bold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3.5 py-2 rounded-xl transition cursor-pointer"
         >
-          Exit Wizard
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+          <span>Back</span>
+        </button>
+
+        <span className="font-extrabold text-gray-800 text-sm">Add New Listing Wizard</span>
+
+        <button
+          type="button"
+          onClick={() => router.push("/owner/dashboard")}
+          className="text-xs font-semibold text-gray-500 hover:text-gray-900 border border-gray-200 hover:border-gray-300 bg-white px-3.5 py-2 rounded-xl transition cursor-pointer"
+        >
+          Exit
         </button>
       </div>
 
@@ -285,106 +275,75 @@ export default function CreateLibraryWizard() {
 
             {/* STEP 1: LOCATION FORM */}
             {step === 1 && (
-              <div className="space-y-6">
+              <div className="space-y-6 max-w-xl mx-auto">
                 <div>
                   <h2 className="text-2xl font-black text-gray-900 tracking-tight">Set up your listing address</h2>
-                  <p className="text-sm text-gray-500 mt-1">Please insert the physical address details and pinpoint the marker coordinate position.</p>
+                  <p className="text-sm text-gray-500 mt-1">Please insert the physical address details for your library listing.</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Library Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="Enter Library name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Street address</label>
+                    <input 
+                      type="text" 
+                      placeholder="Your library address"
+                      value={streetAddress}
+                      onChange={(e) => setStreetAddress(e.target.value)}
+                      className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Library Name</label>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">City</label>
                       <input 
                         type="text" 
-                        placeholder="e.g. Brainyard Premium Reading Room"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Enter city"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
                         className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Street address</label>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">State</label>
                       <input 
                         type="text" 
-                        placeholder="e.g. 102 First Floor, Galleria Market"
-                        value={streetAddress}
-                        onChange={(e) => setStreetAddress(e.target.value)}
+                        placeholder="Enter state"
+                        value={stateName}
+                        onChange={(e) => setStateName(e.target.value)}
                         className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
                       />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">City</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Gurugram"
-                          value={city}
-                          onChange={(e) => setCity(e.target.value)}
-                          className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">State</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Haryana"
-                          value={stateName}
-                          onChange={(e) => setStateName(e.target.value)}
-                          className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">PIN Code</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. 122002"
-                          value={pinCode}
-                          onChange={(e) => setPinCode(e.target.value)}
-                          className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Landmark (Optional)</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g. Near Metro Station"
-                          value={landmark}
-                          onChange={(e) => setLandmark(e.target.value)}
-                          className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
-                        />
-                      </div>
                     </div>
                   </div>
-
-                  {/* Mock Map pin dropper */}
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black uppercase text-gray-500">Droppin pin locator (Verify Coordinates)</label>
-                    <div 
-                      onClick={handleMapClick}
-                      className="relative h-64 border border-gray-200 rounded-2xl overflow-hidden cursor-crosshair bg-emerald-50 hover:bg-emerald-100/70 transition flex items-center justify-center select-none"
-                    >
-                      {/* Grid background simulation */}
-                      <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:14px_24px]" />
-                      
-                      {/* Visual road graphic lines */}
-                      <div className="absolute w-full h-4 bg-white/40 top-1/3 -rotate-3" />
-                      <div className="absolute h-full w-6 bg-white/40 left-1/3 rotate-12" />
-
-                      {latitude !== null && longitude !== null ? (
-                        <div className="absolute flex flex-col items-center animate-bounce z-10" style={{ top: "45%", left: "48%" }}>
-                          <MapPin className="w-8 h-8 text-brand fill-white" />
-                          <span className="bg-slate-900/90 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg mt-1 border border-slate-700">Pin Placed</span>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500 font-bold text-center px-6 z-10">Click anywhere inside this box to drop your coordinate marker pin</p>
-                      )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">PIN Code</label>
+                      <input 
+                        type="text" 
+                        placeholder="Enter pin code"
+                        value={pinCode}
+                        onChange={(e) => setPinCode(e.target.value)}
+                        className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
+                      />
                     </div>
-                    <div className="flex gap-4 text-xs font-bold text-gray-600 bg-slate-50 p-2.5 rounded-lg border border-gray-150 justify-around">
-                      <div>Lat: <span className="font-mono text-slate-800">{latitude || "Pending"}</span></div>
-                      <div>Lng: <span className="font-mono text-slate-800">{longitude || "Pending"}</span></div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">Landmark (Optional)</label>
+                      <input 
+                        type="text" 
+                        placeholder="Enter landmark (Optional)"
+                        value={landmark}
+                        onChange={(e) => setLandmark(e.target.value)}
+                        className="w-full text-sm p-3 border border-gray-200 rounded-xl focus:ring-1 focus:ring-brand focus:border-brand outline-none"
+                      />
                     </div>
                   </div>
                 </div>

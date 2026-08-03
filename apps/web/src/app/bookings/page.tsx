@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Star, Calendar, Armchair, ShieldCheck, MessageSquarePlus, Clock, X } from "lucide-react";
+import { Star, Calendar, Armchair, ShieldCheck, MessageSquarePlus, Clock, X, Key } from "lucide-react";
 import { useAuth } from "../../context/AppContext";
 
 interface BookingItem {
@@ -273,6 +273,24 @@ export default function BookingsPage() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Reception Access Key Badge */}
+                    {booking.accessKey && (
+                      <div className="mt-3 p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 bg-slate-800 rounded-lg text-amber-400">
+                            <Key className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none mb-0.5">Reception Access Key</span>
+                            <span className="font-mono text-sm font-black text-amber-400 tracking-wider">{booking.accessKey}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold bg-slate-800 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700">
+                          Show at Reception
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="border-t border-gray-100 pt-4 flex items-center justify-between flex-wrap gap-4 mt-4">
