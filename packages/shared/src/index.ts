@@ -93,14 +93,29 @@ export const CreateLibrarySchema = z.object({
   city: z.string().min(2, "City is required"),
   amenities: z.array(z.string()).default([]),
   slotTypes: z.array(SlotTypeSchema).min(1, "At least one slot type is required"),
-  latitude: z.number().optional().nullable(),
-  longitude: z.number().optional().nullable(),
+  latitude: z
+    .coerce
+    .number()
+    .min(-90, "Latitude must be between -90 and 90")
+    .max(90, "Latitude must be between -90 and 90")
+    .optional()
+    .nullable(),
+  longitude: z
+    .coerce
+    .number()
+    .min(-180, "Longitude must be between -180 and 180")
+    .max(180, "Longitude must be between -180 and 180")
+    .optional()
+    .nullable(),
   chairs: z.number().min(0).default(0).optional(),
   tables: z.number().min(0).default(0).optional(),
   acs: z.number().min(0).default(0).optional(),
   fans: z.number().min(0).default(0).optional(),
 });
 export type CreateLibraryInput = z.infer<typeof CreateLibrarySchema>;
+
+export const UpdateLibrarySchema = CreateLibrarySchema.partial();
+export type UpdateLibraryInput = z.infer<typeof UpdateLibrarySchema>;
 
 // Seat Object Validation
 export const SeatSchema = z.object({
@@ -156,3 +171,16 @@ export const ReviewSchema = z.object({
   comment: z.string().optional().nullable(),
 });
 export type ReviewInput = z.infer<typeof ReviewSchema>;
+
+// Chat schemas
+export const SavePublicKeySchema = z.object({
+  publicKey: z.string().min(1, "Public key is required"),
+});
+export type SavePublicKeyInput = z.infer<typeof SavePublicKeySchema>;
+
+export const SendMessageSchema = z.object({
+  recipientId: z.string().min(1, "Recipient ID is required"),
+  encryptedPayload: z.string().min(1, "Encrypted payload is required"),
+});
+export type SendMessageInput = z.infer<typeof SendMessageSchema>;
+

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../context/AppContext";
-import { LayoutDashboard, Plus, MapPin, Sparkles, Image, Settings, Clock, Check, X, ShieldAlert, BadgeCheck } from "lucide-react";
+import { LayoutDashboard, Plus, MapPin, Sparkles, Image, Settings, Clock, Check, X, ShieldAlert, BadgeCheck, Key, Search, Calendar } from "lucide-react";
 
 interface Library {
   id: string;
@@ -17,6 +17,31 @@ interface Library {
   slotTypes: { id: string; name: string; startTime: string; endTime: string; price: string }[];
 }
 
+interface OwnerBooking {
+  id: string;
+  accessKey: string;
+  date: string;
+  status: string;
+  totalPrice: string;
+  user: {
+    name: string;
+    email: string;
+    phone: string | null;
+  };
+  library: {
+    name: string;
+  };
+  seat: {
+    seatCode: string;
+    seatType: string;
+  };
+  slotType: {
+    name: string;
+    startTime: string;
+    endTime: string;
+  };
+}
+
 export default function OwnerDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -25,6 +50,7 @@ export default function OwnerDashboard() {
   // Photo upload states
   const [uploadingLibraryId, setUploadingLibraryId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [searchFilter, setSearchFilter] = useState("");
 
   // Fetch owner libraries
   const { data: libraries, isLoading, error } = useQuery<Library[]>({
@@ -36,6 +62,20 @@ export default function OwnerDashboard() {
       return res.json();
     },
     enabled: !!user?.id,
+  });
+
+  // Fetch owner bookings for reception validation
+  const { data: ownerBookings, isLoading: isBookingsLoading } = useQuery<OwnerBooking[]>({
+    queryKey: ["owner-bookings"],
+    queryFn: async () => {
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+      const res = await fetch(`${apiBase}/bookings/owner`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load owner bookings");
+      return res.json();
+    },
+    enabled: !!token && (user?.role === "OWNER" || user?.role === "ADMIN"),
   });
 
   // Upload S3 Photo handler
@@ -221,7 +261,99 @@ export default function OwnerDashboard() {
         </div>
       )}
 
+      {/* Reception Desk - Bookings & Access Keys Section */}
+      <div className="mt-14 pt-10 border-t border-gray-200">
+        <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+              <Key className="w-6 h-6 text-amber-500" />
+              Reception Desk — Student Access Keys
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Verify student reservations and access keys upon reception arrival.</p>
+          </div>
 
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              placeholder="Search Name, Email, or Key..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full text-xs p-2.5 pl-9 border border-gray-250 rounded-xl outline-none focus:ring-1 focus:ring-brand focus:border-brand"
+            />
+          </div>
+        </div>
+
+        {isBookingsLoading ? (
+          <div className="animate-pulse bg-white border border-gray-100 rounded-2xl h-32 w-full" />
+        ) : !ownerBookings || ownerBookings.length === 0 ? (
+          <div className="text-center py-10 border border-dashed border-gray-200 rounded-2xl text-xs text-gray-400 font-bold">
+            No student bookings created yet for your libraries.
+          </div>
+        ) : (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-600">
+                <thead className="bg-slate-50 border-b border-gray-200 text-[10px] uppercase font-black text-gray-400 tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Student Name</th>
+                    <th className="py-3 px-4">Library & Seat</th>
+                    <th className="py-3 px-4">Slot & Date</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Access Key</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium">
+                  {ownerBookings
+                    .filter((b) => {
+                      if (!searchFilter.trim()) return true;
+                      const q = searchFilter.toLowerCase();
+                      return (
+                        b.user.name.toLowerCase().includes(q) ||
+                        b.user.email.toLowerCase().includes(q) ||
+                        b.accessKey.toLowerCase().includes(q) ||
+                        b.seat.seatCode.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((b) => {
+                      const bDate = new Date(b.date).toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      });
+                      return (
+                        <tr key={b.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-gray-900">{b.user.name}</div>
+                            <div className="text-[10px] text-gray-400">{b.user.email}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-gray-800">{b.library.name}</div>
+                            <div className="text-[10px] text-brand font-mono font-bold">Seat {b.seat.seatCode}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div>{bDate}</div>
+                            <div className="text-[10px] text-gray-400">{b.slotType.name} ({b.slotType.startTime} - {b.slotType.endTime})</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {b.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className="font-mono text-xs font-black text-amber-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 tracking-wider inline-block">
+                              {b.accessKey}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
     </div>
   );

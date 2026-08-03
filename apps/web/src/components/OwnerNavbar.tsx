@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, User, Menu, X, Compass, ChevronDown } from "lucide-react";
+import { LayoutDashboard, LogOut, User, Menu, X, Compass, ChevronDown, MessageSquare } from "lucide-react";
 import { useAuth } from "../context/AppContext";
 
 export default function OwnerNavbar() {
@@ -34,6 +34,14 @@ export default function OwnerNavbar() {
             >
               <LayoutDashboard className="w-4 h-4 text-brand" />
               Manage Listings
+            </Link>
+
+            <Link
+              href="/owner/messages"
+              className="text-sm font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-2"
+            >
+              <MessageSquare className="w-4 h-4 text-brand" />
+              Messages
             </Link>
 
             {/* Profile Dropdown */}
@@ -70,6 +78,14 @@ export default function OwnerNavbar() {
                   >
                     <LayoutDashboard className="w-4 h-4 text-gray-400" />
                     Dashboard
+                  </Link>
+                  <Link
+                    href="/owner/messages"
+                    onClick={() => setDropdownOpen(false)}
+                    className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-2.5 transition"
+                  >
+                    <MessageSquare className="w-4 h-4 text-gray-400" />
+                    Messages
                   </Link>
                   <button
                     onClick={() => {

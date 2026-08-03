@@ -1,11 +1,12 @@
 import express, { Router } from "express";
 import prisma from "../config/db";
 import redis from "../config/redis";
+import env from "../config/env";
 import { validateBody } from "../middleware/validation";
-import { CreateLibrarySchema, FloorPlanSchema } from "@studyspace/shared";
+import { CreateLibrarySchema, FloorPlanSchema, UpdateLibrarySchema } from "@studyspace/shared";
 import { authMiddleware, requireRole } from "../middleware/auth";
 import { requireLibraryOwnership } from "../middleware/ownership";
-import { Role, ObjectType } from "@prisma/client";
+import { Role, ObjectType, Prisma } from "@prisma/client";
 import { getPresignedUploadUrl, uploadFileToS3, getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
@@ -69,6 +70,294 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /libraries/geocode - Convert address string to latitude/longitude using Google Geocoding or Nominatim fallback
+router.get("/geocode", async (req, res) => {
+  try {
+    const rawAddress = req.query.address ? String(req.query.address).trim() : "";
+    if (!rawAddress) {
+      return res.status(400).json({ message: "address query parameter is required" });
+    }
+
+    const googleApiKey = env.GOOGLE_MAPS_API_KEY;
+
+    // Generate candidate search strings (from full address down to city/pincode) for fallback resolution
+    const parts = rawAddress.split(",").map((p) => p.trim()).filter(Boolean);
+    const candidates: string[] = [rawAddress];
+
+    if (parts.length > 2) {
+      candidates.push(parts.slice(1).join(", "));
+      candidates.push(parts.slice(-3).join(", "));
+      candidates.push(parts.slice(-2).join(", "));
+    } else if (parts.length === 2) {
+      candidates.push(parts[parts.length - 1]);
+    }
+
+    const uniqueCandidates = Array.from(new Set(candidates));
+
+    // 1. Try Google Geocoding API if key is configured
+    if (googleApiKey) {
+      for (const cand of uniqueCandidates) {
+        try {
+          const googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cand)}&key=${googleApiKey}`;
+          const response = await fetch(googleUrl);
+          const data: any = await response.json();
+
+          if (data.status === "OK" && data.results && data.results.length > 0) {
+            const location = data.results[0].geometry.location;
+            return res.json({
+              latitude: location.lat,
+              longitude: location.lng,
+              formattedAddress: data.results[0].formatted_address,
+              source: "google",
+            });
+          } else {
+            console.warn(`Google Geocoding status for candidate "${cand}": ${data.status}`, data.error_message || "");
+            if (data.status === "REQUEST_DENIED" || data.status === "OVER_QUERY_LIMIT") {
+              break;
+            }
+          }
+        } catch (googleError) {
+          console.warn("Google Geocoding API exception:", googleError);
+          break;
+        }
+      }
+    }
+
+    // 2. Fallback to OpenStreetMap Nominatim API with progressive candidates
+    for (const cand of uniqueCandidates) {
+      try {
+        const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cand)}&format=json&limit=1`;
+        const response = await fetch(nominatimUrl, {
+          headers: {
+            "User-Agent": "StudySpace/1.0 (contact@studyspace.com)",
+          },
+        });
+
+        if (response.ok) {
+          const data: any = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const result = data[0];
+            return res.json({
+              latitude: parseFloat(result.lat),
+              longitude: parseFloat(result.lon),
+              formattedAddress: result.display_name,
+              source: "nominatim",
+            });
+          }
+        }
+      } catch (nomError) {
+        console.warn(`Nominatim geocoding failed for candidate "${cand}":`, nomError);
+      }
+    }
+
+    return res.status(404).json({ message: "Address not found" });
+  } catch (error) {
+    console.error("Geocoding error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Helper function to auto-geocode an address string to coordinates
+async function autoGeocodeAddress(rawAddress: string): Promise<{ latitude: number; longitude: number } | null> {
+  if (!rawAddress || !rawAddress.trim()) return null;
+
+  const googleApiKey = env.GOOGLE_MAPS_API_KEY;
+  const parts = rawAddress.split(",").map((p) => p.trim()).filter(Boolean);
+  const candidates: string[] = [rawAddress];
+
+  if (parts.length > 2) {
+    candidates.push(parts.slice(1).join(", "));
+    candidates.push(parts.slice(-3).join(", "));
+    candidates.push(parts.slice(-2).join(", "));
+  } else if (parts.length === 2) {
+    candidates.push(parts[parts.length - 1]);
+  }
+
+  const uniqueCandidates = Array.from(new Set(candidates));
+
+  if (googleApiKey) {
+    for (const cand of uniqueCandidates) {
+      try {
+        const googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cand)}&key=${googleApiKey}`;
+        const response = await fetch(googleUrl);
+        const data: any = await response.json();
+
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          const loc = data.results[0].geometry.location;
+          return { latitude: loc.lat, longitude: loc.lng };
+        } else if (data.status === "REQUEST_DENIED" || data.status === "OVER_QUERY_LIMIT") {
+          break;
+        }
+      } catch (err) {
+        break;
+      }
+    }
+  }
+
+  for (const cand of uniqueCandidates) {
+    try {
+      const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cand)}&format=json&limit=1`;
+      const response = await fetch(nominatimUrl, {
+        headers: { "User-Agent": "StudySpace/1.0 (contact@studyspace.com)" },
+      });
+      if (response.ok) {
+        const data: any = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return { latitude: parseFloat(data[0].lat), longitude: parseFloat(data[0].lon) };
+        }
+      }
+    } catch (err) {}
+  }
+
+  return null;
+}
+
+// GET /libraries/search - Spatial search with Haversine formula & text search fallback
+router.get("/search", async (req, res) => {
+  try {
+    const { lat, lng, radius, query } = req.query;
+
+    const latNum = lat !== undefined && lat !== "" && !isNaN(Number(lat)) ? Number(lat) : null;
+    const lngNum = lng !== undefined && lng !== "" && !isNaN(Number(lng)) ? Number(lng) : null;
+    const radiusNum = radius !== undefined && radius !== "" && !isNaN(Number(radius)) && Number(radius) > 0 ? Number(radius) : 5;
+    const searchQuery = query ? String(query).trim() : "";
+
+    // If spatial coordinates are provided, perform Haversine raw SQL radial search
+    if (latNum !== null && lngNum !== null) {
+      const searchQueryFilter = searchQuery
+        ? Prisma.sql`AND ("name" ILIKE ${"%" + searchQuery + "%"} OR "address" ILIKE ${"%" + searchQuery + "%"} OR "city" ILIKE ${"%" + searchQuery + "%"})`
+        : Prisma.empty;
+
+      const rawLibraries: any[] = await prisma.$queryRaw`
+        SELECT * FROM (
+          SELECT *, (
+            6371 * acos(
+              LEAST(1.0, GREATEST(-1.0,
+                cos( radians(${latNum}) ) * cos( radians("latitude") ) * cos( radians("longitude") - radians(${lngNum}) ) + sin( radians(${latNum}) ) * sin( radians("latitude") )
+              ))
+            )
+          ) AS distance
+          FROM "Library"
+          WHERE "isActive" = true
+            AND "latitude" IS NOT NULL
+            AND "longitude" IS NOT NULL
+            ${searchQueryFilter}
+        ) AS sub
+        WHERE distance < ${radiusNum}
+        ORDER BY distance ASC
+      `;
+
+      if (rawLibraries.length === 0) {
+        return res.json([]);
+      }
+
+      const libraryIds = rawLibraries.map((lib: any) => lib.id);
+      const librariesWithRelations = await prisma.library.findMany({
+        where: { id: { in: libraryIds } },
+        include: {
+          photos: true,
+          slotTypes: true,
+          reviews: {
+            select: {
+              rating: true,
+            },
+          },
+        },
+      });
+
+      const libMap = new Map(librariesWithRelations.map((lib) => [lib.id, lib]));
+
+      const formatted = await Promise.all(
+        rawLibraries.map(async (rawLib: any) => {
+          const lib = libMap.get(rawLib.id);
+          if (!lib) return null;
+
+          const avgRating =
+            lib.reviews.length > 0
+              ? Number((lib.reviews.reduce((sum, r) => sum + r.rating, 0) / lib.reviews.length).toFixed(2))
+              : null;
+
+          const signedPhotos = await Promise.all(lib.photos.map((p) => getPresignedDownloadUrl(p.url)));
+
+          return {
+            id: lib.id,
+            name: lib.name,
+            address: lib.address,
+            city: lib.city,
+            amenities: lib.amenities,
+            latitude: lib.latitude,
+            longitude: lib.longitude,
+            distance: Number(Number(rawLib.distance).toFixed(2)),
+            photos: signedPhotos,
+            slotTypes: lib.slotTypes,
+            rating: avgRating,
+            reviewCount: lib.reviews.length,
+          };
+        })
+      );
+
+      return res.json(formatted.filter(Boolean));
+    }
+
+    // Fallback search: If no coordinates are sent, perform simple text matching on city/address/name
+    const whereClause: Prisma.LibraryWhereInput = {
+      isActive: true,
+    };
+
+    if (searchQuery) {
+      whereClause.OR = [
+        { name: { contains: searchQuery, mode: "insensitive" } },
+        { address: { contains: searchQuery, mode: "insensitive" } },
+        { city: { contains: searchQuery, mode: "insensitive" } },
+      ];
+    }
+
+    const libraries = await prisma.library.findMany({
+      where: whereClause,
+      include: {
+        photos: true,
+        slotTypes: true,
+        reviews: {
+          select: {
+            rating: true,
+          },
+        },
+      },
+    });
+
+    const formatted = await Promise.all(
+      libraries.map(async (lib) => {
+        const avgRating =
+          lib.reviews.length > 0
+            ? Number((lib.reviews.reduce((sum, r) => sum + r.rating, 0) / lib.reviews.length).toFixed(2))
+            : null;
+
+        const signedPhotos = await Promise.all(lib.photos.map((p) => getPresignedDownloadUrl(p.url)));
+
+        return {
+          id: lib.id,
+          name: lib.name,
+          address: lib.address,
+          city: lib.city,
+          amenities: lib.amenities,
+          latitude: lib.latitude,
+          longitude: lib.longitude,
+          distance: null,
+          photos: signedPhotos,
+          slotTypes: lib.slotTypes,
+          rating: avgRating,
+          reviewCount: lib.reviews.length,
+        };
+      })
+    );
+
+    return res.json(formatted);
+  } catch (error) {
+    console.error("Spatial search libraries error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // GET /libraries/:id - Get details of a library
 router.get("/:id", async (req, res) => {
   try {
@@ -79,6 +368,14 @@ router.get("/:id", async (req, res) => {
       include: {
         photos: true,
         slotTypes: true,
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
         reviews: {
           include: {
             user: {
@@ -139,6 +436,29 @@ router.post("/", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validate
   try {
     const { name, address, city, amenities, slotTypes, latitude, longitude, chairs, tables, acs, fans } = req.body;
 
+    let finalLat = latitude !== undefined && latitude !== null && latitude !== "" ? Number(latitude) : null;
+    let finalLng = longitude !== undefined && longitude !== null && longitude !== "" ? Number(longitude) : null;
+
+    if (finalLat !== null) {
+      if (isNaN(finalLat) || finalLat < -90 || finalLat > 90) {
+        return res.status(400).json({ message: "Latitude must be between -90 and 90" });
+      }
+    }
+    if (finalLng !== null) {
+      if (isNaN(finalLng) || finalLng < -180 || finalLng > 180) {
+        return res.status(400).json({ message: "Longitude must be between -180 and 180" });
+      }
+    }
+
+    // Auto-geocode from address if latitude/longitude are omitted
+    if (finalLat === null || finalLng === null) {
+      const geocoded = await autoGeocodeAddress(`${address}, ${city}`);
+      if (geocoded) {
+        finalLat = geocoded.latitude;
+        finalLng = geocoded.longitude;
+      }
+    }
+
     const library = await prisma.library.create({
       data: {
         ownerId: req.user!.userId,
@@ -146,8 +466,8 @@ router.post("/", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), validate
         address,
         city,
         amenities,
-        latitude: latitude ? Number(latitude) : null,
-        longitude: longitude ? Number(longitude) : null,
+        latitude: finalLat,
+        longitude: finalLng,
         chairs: chairs ? Number(chairs) : 0,
         tables: tables ? Number(tables) : 0,
         acs: acs ? Number(acs) : 0,
@@ -180,6 +500,29 @@ router.put("/:id", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requir
     const { id } = req.params;
     const { name, address, city, amenities, slotTypes, latitude, longitude, chairs, tables, acs, fans } = req.body;
 
+    let finalLat = latitude !== undefined && latitude !== null && latitude !== "" ? Number(latitude) : null;
+    let finalLng = longitude !== undefined && longitude !== null && longitude !== "" ? Number(longitude) : null;
+
+    if (finalLat !== null) {
+      if (isNaN(finalLat) || finalLat < -90 || finalLat > 90) {
+        return res.status(400).json({ message: "Latitude must be between -90 and 90" });
+      }
+    }
+    if (finalLng !== null) {
+      if (isNaN(finalLng) || finalLng < -180 || finalLng > 180) {
+        return res.status(400).json({ message: "Longitude must be between -180 and 180" });
+      }
+    }
+
+    // Auto-geocode from address if latitude/longitude are omitted
+    if (finalLat === null || finalLng === null) {
+      const geocoded = await autoGeocodeAddress(`${address}, ${city}`);
+      if (geocoded) {
+        finalLat = geocoded.latitude;
+        finalLng = geocoded.longitude;
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.slotType.deleteMany({ where: { libraryId: id } });
 
@@ -190,8 +533,8 @@ router.put("/:id", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requir
           address,
           city,
           amenities,
-          latitude: latitude ? Number(latitude) : null,
-          longitude: longitude ? Number(longitude) : null,
+          latitude: finalLat,
+          longitude: finalLng,
           chairs: chairs ? Number(chairs) : 0,
           tables: tables ? Number(tables) : 0,
           acs: acs ? Number(acs) : 0,
@@ -222,6 +565,92 @@ router.put("/:id", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requir
     return res.json({ ...updated, photos: signedPhotos });
   } catch (error) {
     console.error("Update library error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// PATCH /libraries/:id - Partial update library listing (Owner/Admin only)
+router.patch("/:id", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), requireLibraryOwnership, validateBody(UpdateLibrarySchema), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, address, city, amenities, latitude, longitude, chairs, tables, acs, fans, slotTypes } = req.body;
+
+    if (latitude !== undefined && latitude !== null && latitude !== "") {
+      const latVal = Number(latitude);
+      if (isNaN(latVal) || latVal < -90 || latVal > 90) {
+        return res.status(400).json({ message: "Latitude must be between -90 and 90" });
+      }
+    }
+
+    if (longitude !== undefined && longitude !== null && longitude !== "") {
+      const lngVal = Number(longitude);
+      if (isNaN(lngVal) || lngVal < -180 || lngVal > 180) {
+        return res.status(400).json({ message: "Longitude must be between -180 and 180" });
+      }
+    }
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (amenities !== undefined) updateData.amenities = amenities;
+    if (latitude !== undefined) updateData.latitude = latitude !== null && latitude !== "" ? Number(latitude) : null;
+    if (longitude !== undefined) updateData.longitude = longitude !== null && longitude !== "" ? Number(longitude) : null;
+    if (chairs !== undefined) updateData.chairs = Number(chairs);
+    if (tables !== undefined) updateData.tables = Number(tables);
+    if (acs !== undefined) updateData.acs = Number(acs);
+    if (fans !== undefined) updateData.fans = Number(fans);
+
+    if (slotTypes && Array.isArray(slotTypes)) {
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.slotType.deleteMany({ where: { libraryId: id } });
+        return tx.library.update({
+          where: { id },
+          data: {
+            ...updateData,
+            slotTypes: {
+              create: slotTypes.map((slot: any) => ({
+                name: slot.name,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                price: slot.price,
+              })),
+            },
+          },
+          include: {
+            slotTypes: true,
+            photos: true,
+          },
+        });
+      });
+      const signedPhotos = await Promise.all(
+        updated.photos.map(async (p) => ({
+          ...p,
+          url: await getPresignedDownloadUrl(p.url),
+        }))
+      );
+      return res.json({ ...updated, photos: signedPhotos });
+    }
+
+    const updated = await prisma.library.update({
+      where: { id },
+      data: updateData,
+      include: {
+        slotTypes: true,
+        photos: true,
+      },
+    });
+
+    const signedPhotos = await Promise.all(
+      updated.photos.map(async (p) => ({
+        ...p,
+        url: await getPresignedDownloadUrl(p.url),
+      }))
+    );
+
+    return res.json({ ...updated, photos: signedPhotos });
+  } catch (error) {
+    console.error("Patch library error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 });

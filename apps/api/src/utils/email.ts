@@ -19,10 +19,11 @@ interface EmailParams {
   date: string;
   slotName: string;
   price: number;
+  accessKey?: string;
 }
 
 export async function sendBookingConfirmationEmail(params: EmailParams) {
-  const { to, studentName, libraryName, seatCode, date, slotName, price } = params;
+  const { to, studentName, libraryName, seatCode, date, slotName, price, accessKey } = params;
 
   const text = `Booking Confirmed: ${libraryName}
 
@@ -30,12 +31,13 @@ Dear ${studentName},
 
 Your self-study seat is booked. Show this email at reception when you arrive.
 
+Access Key: ${accessKey || "N/A"}
 Seat: ${seatCode}
 Date: ${date}
 Slot: ${slotName}
 Amount Paid: ₹${price}
 
-StudySpace Inc. © 2026`;
+StudySpace Inc.`;
 
   const html = `
     <div style="max-width: 520px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff; border-radius: 12px; border: 1px solid #ececec; overflow: hidden;">
@@ -47,9 +49,18 @@ StudySpace Inc. © 2026`;
       <div style="padding: 24px 32px 12px;">
         <p style="font-size: 15px; font-weight: 600; color: #1a1a1a; margin: 0 0 6px;">Dear ${studentName},</p>
         <p style="font-size: 14px; color: #666666; margin: 0 0 20px; line-height: 1.6;">
-          Your self-study seat is booked. Please show this email at reception when you arrive.
+          Your self-study seat is booked. Please show your Access Key at reception when you arrive.
         </p>
       </div>
+
+      ${
+        accessKey
+          ? `<div style="margin: 0 32px 20px; padding: 16px; background-color: #0f172a; border-radius: 10px; text-align: center;">
+              <p style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #94a3b8; text-transform: uppercase; margin: 0 0 4px;">Reception Access Key</p>
+              <p style="font-size: 22px; font-weight: 900; font-family: 'Courier New', Consolas, monospace; color: #38bdf8; letter-spacing: 0.08em; margin: 0;">${accessKey}</p>
+            </div>`
+          : ""
+      }
 
       <div style="padding: 0 32px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
@@ -75,7 +86,7 @@ StudySpace Inc. © 2026`;
       </div>
 
       <div style="padding: 16px 32px 24px; border-top: 1px solid #f0f0f0;">
-        <p style="font-size: 12px; color: #bbbbbb; margin: 0; text-align: center;">StudySpace Inc. © 2026</p>
+        <p style="font-size: 12px; color: #bbbbbb; margin: 0; text-align: center;">StudySpace Inc.</p>
       </div>
     </div>
   `;
