@@ -3,12 +3,19 @@ import prisma from "../config/db";
 import redis from "../config/redis";
 import { validateBody } from "../middleware/validation";
 import { BookingHoldSchema } from "@studyspace/shared";
-import { authMiddleware } from "../middleware/auth";
-import { BookingStatus } from "@prisma/client";
+import { authMiddleware, requireRole } from "../middleware/auth";
+import { BookingStatus, Role } from "@prisma/client";
 import { sendBookingConfirmationEmail } from "../utils/email";
 import { getPresignedDownloadUrl } from "../utils/s3";
 
 const router = Router();
+
+function generateReadableAccessKey(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const p1 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const p2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  return `SS-${p1}-${p2}`;
+}
 
 // Helper to get seat with library details
 async function getSeatLibraryInfo(seatId: string) {
@@ -214,10 +221,10 @@ router.post("/", authMiddleware, async (req, res) => {
       }
     }
 
-    // 4. Create bookings sequentially
+    // 4. Create bookings sequentially with unique readable access keys
     const createdList = [];
     for (const d of dates) {
-      const randKey = "SS-" + Math.random().toString(36).substring(2, 6).toUpperCase() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+      const accessKey = generateReadableAccessKey();
       const newBooking = await prisma.booking.create({
         data: {
           userId,
@@ -227,7 +234,7 @@ router.post("/", authMiddleware, async (req, res) => {
           date: d,
           status: BookingStatus.CONFIRMED,
           totalPrice: slotType.price,
-          accessKey: randKey,
+          accessKey,
           payment: {
             create: {
               amount: slotType.price,
@@ -269,7 +276,7 @@ router.post("/", authMiddleware, async (req, res) => {
       if (booking.library && booking.library.ownerId) {
         io.to(booking.library.ownerId).emit("new-notification", {
           title: "New Booking Created",
-          message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}.`,
+          message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}. Access Key: ${booking.accessKey}`,
         });
       }
     }
@@ -280,7 +287,7 @@ router.post("/", authMiddleware, async (req, res) => {
           data: {
             userId: booking.library.ownerId,
             title: "New Booking Created",
-            message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}.`,
+            message: `Seat ${booking.seat.seatCode} at ${booking.library.name} has been booked by ${recipientName || "a student"}. Access Key: ${booking.accessKey}`,
             type: "BOOKING",
             link: "/owner/dashboard",
           },
@@ -304,6 +311,7 @@ router.post("/", authMiddleware, async (req, res) => {
       date: dateRangeStr,
       slotName: booking.slotType.name,
       price: Number(slotType.price) * dates.length,
+      accessKey: booking.accessKey,
     }).catch((err) => console.error("Email delivery failed:", err));
 
     return res.status(201).json(booking);
@@ -359,6 +367,65 @@ router.get("/me", authMiddleware, async (req, res) => {
     return res.json(formatted);
   } catch (error) {
     console.error("Fetch my bookings error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// GET /bookings/owner - Fetch bookings for libraries owned by the authenticated user (for reception validation)
+router.get("/owner", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), async (req, res) => {
+  try {
+    const ownerId = req.user!.userId;
+    const { libraryId } = req.query;
+
+    const whereClause: any = {
+      library: req.user!.role === Role.ADMIN ? {} : { ownerId },
+    };
+
+    if (libraryId && typeof libraryId === "string") {
+      whereClause.libraryId = libraryId;
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: whereClause,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        library: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        seat: {
+          select: {
+            id: true,
+            seatCode: true,
+            seatType: true,
+          },
+        },
+        slotType: {
+          select: {
+            id: true,
+            name: true,
+            startTime: true,
+            endTime: true,
+          },
+        },
+      },
+      orderBy: {
+        date: "desc",
+      },
+    });
+
+    return res.json(bookings);
+  } catch (error) {
+    console.error("Fetch owner bookings error:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 });

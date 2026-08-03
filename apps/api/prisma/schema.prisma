@@ -28,6 +28,9 @@ model User {
   libraries      Library[]      @relation("OwnerLibraries")
   reviews        Review[]
   notifications  Notification[]
+  publicKey      PublicKey?
+  sentMessages   Message[]      @relation("SentMessages")
+  receivedMessages Message[]    @relation("ReceivedMessages")
 }
 
 enum Role {
@@ -187,3 +190,22 @@ model Notification {
   link      String?
   createdAt DateTime @default(now())
 }
+
+model PublicKey {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicKey String
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  senderId         String
+  sender           User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId      String
+  recipient        User     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  encryptedPayload String
+  createdAt        DateTime @default(now())
+}
+

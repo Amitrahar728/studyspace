@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import env from "./config/env";
+import prisma from "./config/db";
 
 // Route imports
 import authRouter from "./routes/auth";
@@ -14,14 +15,24 @@ import reviewRouter from "./routes/reviews";
 import adminRouter from "./routes/admin";
 import notificationRouter from "./routes/notifications";
 import earningsRouter from "./routes/earnings";
+import chatRouter from "./routes/chat";
 
 const app = express();
 const server = http.createServer(app);
 
+// Flexible CORS configuration for development & production
+const corsOriginHandler = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  if (!origin || origin.startsWith("http://localhost:") || origin === env.CLIENT_URL) {
+    callback(null, true);
+  } else {
+    callback(null, true);
+  }
+};
+
 // Socket.io configuration
 export const io = new Server(server, {
   cors: {
-    origin: env.CLIENT_URL,
+    origin: corsOriginHandler,
     methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
     credentials: true,
   },
@@ -32,7 +43,7 @@ app.set("io", io);
 // Middleware
 app.use(
   cors({
-    origin: env.CLIENT_URL,
+    origin: corsOriginHandler,
     credentials: true,
   })
 );
@@ -54,6 +65,7 @@ app.use("/api/v1/payments", paymentRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/owner/earnings", earningsRouter);
 app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/chat", chatRouter);
 
 // Socket.io event handling
 io.on("connection", (socket) => {
@@ -75,6 +87,47 @@ io.on("connection", (socket) => {
   socket.on("leave-library", (libraryId: string) => {
     socket.leave(libraryId);
     console.log(`Socket ${socket.id} left library room: ${libraryId}`);
+  });
+
+  // Join chat room (room format: `chat:user1_user2`)
+  socket.on("join-chat", (data: string | { room: string }) => {
+    const roomName = typeof data === "string" ? data : data?.room;
+    if (roomName) {
+      socket.join(roomName);
+      console.log(`Socket ${socket.id} joined chat room: ${roomName}`);
+    }
+  });
+
+  // Send encrypted message event
+  socket.on("send-message", async (data: { senderId: string; recipientId: string; encryptedPayload: string }) => {
+    try {
+      const { senderId, recipientId, encryptedPayload } = data;
+      if (!senderId || !recipientId || !encryptedPayload) {
+        return;
+      }
+
+      const message = await prisma.message.create({
+        data: {
+          senderId,
+          recipientId,
+          encryptedPayload,
+        },
+        include: {
+          sender: {
+            select: { id: true, name: true, avatarUrl: true, role: true },
+          },
+          recipient: {
+            select: { id: true, name: true, avatarUrl: true, role: true },
+          },
+        },
+      });
+
+      const room = `chat:${[senderId, recipientId].sort().join("_")}`;
+      io.to(room).emit("new-message", message);
+      io.to(recipientId).emit("new-message-notification", message);
+    } catch (err) {
+      console.error("Error processing send-message event:", err);
+    }
   });
 
   socket.on("disconnect", () => {

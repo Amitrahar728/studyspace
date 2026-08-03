@@ -29,16 +29,6 @@ export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user?.role === "OWNER") {
-      router.push("/owner/dashboard");
-    }
-  }, [user, router]);
-
-  if (user?.role === "OWNER") {
-    return null;
-  }
-
   const [cityQuery, setCityQuery] = useState("");
   const [startDateQuery, setStartDateQuery] = useState("");
   const [endDateQuery, setEndDateQuery] = useState("");
@@ -51,16 +41,27 @@ export default function HomePage() {
   // Fetch libraries using TanStack Query
   const { data: libraries, isLoading, error } = useQuery<LibraryListItem[]>({
     queryKey: ["libraries", activeSearch],
+    enabled: user?.role !== "OWNER",
     queryFn: async () => {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
       const url = activeSearch
-        ? `${apiBase}/libraries?city=${encodeURIComponent(activeSearch)}`
+        ? `${apiBase}/libraries/search?query=${encodeURIComponent(activeSearch)}`
         : `${apiBase}/libraries`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to load libraries");
       return res.json();
     },
   });
+
+  useEffect(() => {
+    if (user?.role === "OWNER") {
+      router.push("/owner/dashboard");
+    }
+  }, [user, router]);
+
+  if (user?.role === "OWNER") {
+    return null;
+  }
 
   const allAmenities = [
     "High-speed Wi-Fi",
