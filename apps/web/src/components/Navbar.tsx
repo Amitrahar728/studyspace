@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth, useSocket } from "../context/AppContext";
-import { Search, Menu, User, LogOut, Compass, LayoutDashboard, Settings, MapPin } from "lucide-react";
+import { Search, Menu, User, LogOut, Compass, LayoutDashboard, Settings, MapPin, MessageSquare } from "lucide-react";
 
 import OwnerNavbar from "./OwnerNavbar";
 
@@ -114,12 +114,16 @@ export default function Navbar() {
     router.push(`/?${params.toString()}`);
   };
 
+  if (user?.role === "OWNER" || pathname?.startsWith("/owner")) {
+    return <OwnerNavbar />;
+  }
+
   return (
     <header className="sticky top-0 z-40 w-full bg-white border-b border-gray-100 shadow-sm">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
 
         {/* Logo */}
-        <Link href={user?.role === "OWNER" ? "/owner/dashboard" : "/"} onClick={() => setIsSearchExpanded(false)} className="flex items-center gap-2 shrink-0">
+        <Link href="/" onClick={() => setIsSearchExpanded(false)} className="flex items-center gap-2 shrink-0">
           <span className="text-2xl font-black text-brand tracking-tight flex items-center gap-1">
             <span className="bg-brand text-white p-1.5 rounded-lg flex items-center justify-center font-serif text-lg leading-none">S</span>
             StudySpace
@@ -168,13 +172,6 @@ export default function Navbar() {
                   {user ? user.name.charAt(0).toUpperCase() : <User className="w-4 h-4" />}
                 </div>
               )}
-
-              {/* Notification unread dot */}
-              {user?.role === "OWNER" && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
             </button>
 
             {dropdownOpen && (
@@ -191,63 +188,34 @@ export default function Navbar() {
                       </div>
                     </div>
 
-                    {/* Home link (Non-Owners only) */}
-                    {user.role !== "OWNER" && (
-                      <Link
-                        href="/"
-                        onClick={() => setDropdownOpen(false)}
-                        className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
-                      >
-                        <Compass className="w-4 h-4 text-gray-500" />
-                        Home
-                      </Link>
-                    )}
+                    {/* Home link */}
+                    <Link
+                      href="/"
+                      onClick={() => setDropdownOpen(false)}
+                      className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
+                    >
+                      <Compass className="w-4 h-4 text-gray-500" />
+                      Home
+                    </Link>
 
                     {/* Student role links */}
                     {user.role === "STUDENT" && (
-                      <Link
-                        href="/bookings"
-                        onClick={() => setDropdownOpen(false)}
-                        className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
-                      >
-                        <LayoutDashboard className="w-4 h-4 text-gray-500" />
-                        My Bookings
-                      </Link>
-                    )}
-
-                    {/* Owner role links */}
-                    {user.role === "OWNER" && (
                       <>
                         <Link
-                          href="/owner/dashboard"
+                          href="/bookings"
                           onClick={() => setDropdownOpen(false)}
                           className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
                         >
                           <LayoutDashboard className="w-4 h-4 text-gray-500" />
-                          My Listings
+                          My Bookings
                         </Link>
                         <Link
-                          href="/notifications"
-                          onClick={() => setDropdownOpen(false)}
-                          className="px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between transition"
-                        >
-                          <span className="flex items-center gap-3">
-                            <Settings className="w-4 h-4 text-gray-500" />
-                            Notifications
-                          </span>
-                          {unreadCount > 0 && (
-                            <span className="bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                              {unreadCount}
-                            </span>
-                          )}
-                        </Link>
-                        <Link
-                          href="/owner/earnings"
+                          href="/messages"
                           onClick={() => setDropdownOpen(false)}
                           className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 transition"
                         >
-                          <Compass className="w-4 h-4 text-gray-500" />
-                          Earnings
+                          <MessageSquare className="w-4 h-4 text-gray-500" />
+                          Messages
                         </Link>
                       </>
                     )}
