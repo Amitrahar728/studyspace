@@ -2,8 +2,15 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function Footer() {
+  const pathname = usePathname();
+
+  if (pathname?.startsWith("/auth")) {
+    return null;
+  }
+
   return (
     <footer className="bg-gray-50 border-t border-gray-200 mt-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row items-center justify-center gap-4">

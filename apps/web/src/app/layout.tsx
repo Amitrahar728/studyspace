@@ -7,8 +7,8 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 export const metadata: Metadata = {
-  title: "StudySpace | Find & Reserve Study Seats",
-  description: "StudySpace connects students with premium self-study reading rooms. Choose your seat map layout and reserve physical desks in real-time.",
+  title: "Alcove | Find & Reserve Study Seats",
+  description: "Alcove connects students with premium self-study reading rooms. Choose your seat map layout and reserve physical desks in real-time.",
 };
 
 export default function RootLayout({

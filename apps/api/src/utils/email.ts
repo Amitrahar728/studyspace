@@ -37,7 +37,7 @@ Date: ${date}
 Slot: ${slotName}
 Amount Paid: ₹${price}
 
-StudySpace Inc.`;
+Alcove Inc.`;
 
   const html = `
     <div style="max-width: 520px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #ffffff; border-radius: 12px; border: 1px solid #ececec; overflow: hidden;">
@@ -86,13 +86,13 @@ StudySpace Inc.`;
       </div>
 
       <div style="padding: 16px 32px 24px; border-top: 1px solid #f0f0f0;">
-        <p style="font-size: 12px; color: #bbbbbb; margin: 0; text-align: center;">StudySpace Inc.</p>
+        <p style="font-size: 12px; color: #bbbbbb; margin: 0; text-align: center;">Alcove Inc.</p>
       </div>
     </div>
   `;
 
   const mailOptions = {
-    from: `"StudySpace" <${env.SMTP_FROM_EMAIL}>`,
+    from: `"Alcove" <${env.SMTP_FROM_EMAIL}>`,
     to,
     subject: `Booking Confirmed: Seat ${seatCode} at ${libraryName}`,
     text,

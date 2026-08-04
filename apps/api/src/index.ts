@@ -52,7 +52,7 @@ app.use(cookieParser());
 
 // Base Route
 app.get("/", (req, res) => {
-  res.json({ message: "StudySpace API is online" });
+  res.json({ message: "Alcove API is online" });
 });
 
 // Mount Routes

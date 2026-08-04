@@ -14,7 +14,7 @@ function generateReadableAccessKey(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const p1 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
   const p2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  return `SS-${p1}-${p2}`;
+  return `AL-${p1}-${p2}`;
 }
 
 // Helper to get seat with library details
