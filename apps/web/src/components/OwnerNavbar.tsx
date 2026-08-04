@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, LogOut, User, Menu, X, Compass, ChevronDown, MessageSquare } from "lucide-react";
+import AlcoveLogo from "./AlcoveLogo";
 import { useAuth } from "../context/AppContext";
 
 export default function OwnerNavbar() {
@@ -19,10 +20,8 @@ export default function OwnerNavbar() {
           {/* Brand Logo */}
           <div className="flex items-center gap-6">
             <Link href="/owner/dashboard" className="flex items-center gap-2">
-              <span className="text-xl font-black text-brand tracking-tight flex items-center gap-1.5">
-                <span className="bg-brand text-white p-1 rounded flex items-center justify-center font-serif text-sm leading-none">H</span>
-                StudySpace <span className="text-xs font-bold text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full uppercase tracking-wider ml-1">Host</span>
-              </span>
+              <AlcoveLogo size="sm" />
+              <span className="text-[10px] font-bold text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full uppercase tracking-wider">Host</span>
             </Link>
           </div>
 

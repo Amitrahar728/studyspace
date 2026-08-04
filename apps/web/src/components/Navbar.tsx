@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth, useSocket } from "../context/AppContext";
 import { Search, Menu, User, LogOut, Compass, LayoutDashboard, Settings, MapPin, MessageSquare } from "lucide-react";
 
+import AlcoveLogo from "./AlcoveLogo";
 import OwnerNavbar from "./OwnerNavbar";
 
 export default function Navbar() {
@@ -13,6 +14,10 @@ export default function Navbar() {
   const { socket } = useSocket();
   const router = useRouter();
   const pathname = usePathname();
+
+  if (pathname?.startsWith("/auth")) {
+    return null;
+  }
 
   const isHome = pathname === "/";
 
@@ -124,10 +129,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link href="/" onClick={() => setIsSearchExpanded(false)} className="flex items-center gap-2 shrink-0">
-          <span className="text-2xl font-black text-brand tracking-tight flex items-center gap-1">
-            <span className="bg-brand text-white p-1.5 rounded-lg flex items-center justify-center font-serif text-lg leading-none">S</span>
-            StudySpace
-          </span>
+          <AlcoveLogo size="md" />
         </Link>
 
         {/* Center Search Pill - Airbnb styling (Only visible for logged-in Students) */}
