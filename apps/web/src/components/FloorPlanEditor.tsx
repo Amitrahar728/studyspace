@@ -54,7 +54,7 @@ export default function FloorPlanEditor({ libraryId, token, initialData }: Floor
   // Add layout object
   const addObject = (type: LayoutObject["type"]) => {
     const id = `obj_${Date.now()}`;
-    
+
     let width = 40;
     let height = 40;
     if (type === "TABLE") {
@@ -148,7 +148,7 @@ export default function FloorPlanEditor({ libraryId, token, initialData }: Floor
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to save floor plan");
 
-      router.push("/owner/dashboard");
+      router.push("/owner/libraries/create");
     } catch (err: any) {
       setSaveError(err.message);
     } finally {
@@ -158,12 +158,12 @@ export default function FloorPlanEditor({ libraryId, token, initialData }: Floor
 
   return (
     <div className="flex flex-col h-[85vh] border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-      
+
       {/* Editor toolbar header */}
       <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center shrink-0 border-b border-slate-800">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/owner/dashboard")}
+            onClick={() => router.push("/owner/libraries/create")}
             className="p-2 hover:bg-slate-800 rounded-full transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -192,14 +192,14 @@ export default function FloorPlanEditor({ libraryId, token, initialData }: Floor
 
       {/* Main editor grid */}
       <div className="flex-grow flex items-stretch overflow-hidden">
-        
+
         {/* Left Elements Tool palette */}
         <aside className="w-56 shrink-0 border-r border-gray-250 border-gray-200 bg-slate-50 p-4 space-y-4 flex flex-col justify-between overflow-y-auto">
           <div className="space-y-4">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
               Add Layout Objects
             </h3>
-            
+
             <div className="space-y-2">
               <button
                 onClick={() => addObject("SEAT")}
@@ -283,7 +283,7 @@ export default function FloorPlanEditor({ libraryId, token, initialData }: Floor
             <Layer>
               {objects.map((obj) => {
                 const isSelected = selectedId === obj.id;
-                
+
                 // Color formatting
                 let fillColor = "#E2E8F0";
                 let strokeColor = isSelected ? "#FF385C" : "#94A3B8";
