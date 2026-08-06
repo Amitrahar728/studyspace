@@ -580,8 +580,8 @@ function BookingWizardContent() {
         {/* Right Column: Sticky Summary Panel */}
         {step < 5 && (
           <div className="w-full lg:sticky lg:top-24">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md">
-              <h3 className="text-base font-black text-gray-900 mb-4 border-b border-gray-100 pb-3">
+            <div className="bg-white border border-[#E8E2D5] rounded-2xl p-6 shadow-md">
+              <h3 className="text-base font-black text-[#221C19] mb-4 border-b border-[#E8E2D5] pb-3">
                 Booking Summary
               </h3>
 
@@ -590,26 +590,26 @@ function BookingWizardContent() {
                   <img
                     src={library.photos[0].url}
                     alt={library.name}
-                    className="w-20 h-20 rounded-xl object-cover border border-gray-100"
+                    className="w-20 h-20 rounded-xl object-cover border border-[#E8E2D5]"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-slate-400">
+                  <div className="w-20 h-20 rounded-xl bg-brand-light flex items-center justify-center font-bold text-brand">
                     SS
                   </div>
                 )}
                 <div>
-                  <h4 className="font-bold text-gray-900 text-sm truncate max-w-[150px]">{currentLibraryName}</h4>
-                  <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
+                  <h4 className="font-bold text-[#221C19] text-sm truncate max-w-[150px]">{currentLibraryName}</h4>
+                  <p className="text-xs text-[#6B5E57] flex items-center gap-1.5 mt-1">
                     <MapPin className="w-3.5 h-3.5 text-brand" />
                     {library?.city}
                   </p>
                 </div>
               </div>
 
-              <div className="border-t border-gray-100 py-4 space-y-2.5 text-xs text-gray-650 font-medium">
+              <div className="border-t border-[#E8E2D5] py-4 space-y-2.5 text-xs text-[#6B5E57] font-medium">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Date</span>
-                  <span className="text-gray-900">
+                  <span className="text-[#6B5E57]">Date</span>
+                  <span className="text-[#221C19]">
                     {startDateVal 
                       ? (startDateVal === endDateVal 
                           ? new Date(startDateVal).toLocaleDateString() 
@@ -619,27 +619,27 @@ function BookingWizardContent() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Slot Type</span>
-                  <span className="text-gray-900">{selectedSlot?.name || "--"}</span>
+                  <span className="text-[#6B5E57]">Slot Type</span>
+                  <span className="text-[#221C19]">{selectedSlot?.name || "--"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Selected Desk</span>
+                  <span className="text-[#6B5E57]">Selected Desk</span>
                   <span className="text-brand font-bold">{seatCodeDisplay}</span>
                 </div>
               </div>
 
-              <div className="border-t border-gray-100 pt-4 space-y-2.5 text-xs text-gray-600">
+              <div className="border-t border-[#E8E2D5] pt-4 space-y-2.5 text-xs text-[#6B5E57]">
                 <div className="flex justify-between">
                   <span>Base Price</span>
-                  <span className="font-bold text-gray-900">
+                  <span className="font-bold text-[#221C19]">
                     {datesCount > 1 ? `₹${basePrice} x ${datesCount} days = ` : ""}₹{slotPrice}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Service Fee (10%)</span>
-                  <span className="font-bold text-gray-900">₹{serviceFee}</span>
+                  <span className="font-bold text-[#221C19]">₹{serviceFee}</span>
                 </div>
-                <div className="flex justify-between text-sm font-black text-gray-950 pt-1.5 border-t border-gray-100">
+                <div className="flex justify-between text-sm font-black text-[#221C19] pt-1.5 border-t border-[#E8E2D5]">
                   <span>Total Amount</span>
                   <span>₹{totalPrice}</span>
                 </div>

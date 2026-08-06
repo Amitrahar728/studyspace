@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Search, MapPin, SlidersHorizontal, Star, ShieldAlert } from "lucide-react";
+import { Search, MapPin, SlidersHorizontal, Star, ShieldAlert, Calendar, ArrowRight, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AppContext";
 
 interface LibraryListItem {
@@ -25,18 +25,83 @@ interface LibraryListItem {
   reviewCount: number;
 }
 
+function LibraryCard({ lib }: { lib: LibraryListItem }) {
+  const photo = lib.photos && lib.photos.length > 0
+    ? lib.photos[0]
+    : "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=600&q=80";
+  const lowestPrice = lib.slotTypes && lib.slotTypes.length > 0
+    ? Math.min(...lib.slotTypes.map((s) => Number(s.price)))
+    : 150;
+
+  return (
+    <Link
+      href={"/libraries/" + lib.id}
+      className="group bg-white border border-stone-200/80 rounded-2xl overflow-hidden hover:border-[#A95031]/50 hover:shadow-lg transition duration-200 flex flex-col justify-between cursor-pointer shadow-sm"
+    >
+      <div>
+        <div className="relative h-48 w-full bg-stone-100 overflow-hidden border-b border-stone-100">
+          <img
+            src={photo}
+            alt={lib.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+          />
+          {lib.rating ? (
+            <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm border border-stone-200/80 px-2.5 py-1 rounded-full text-xs font-extrabold text-stone-900 shadow-sm flex items-center gap-1">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span>{lib.rating.toFixed(1)}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="p-5">
+          <h3 className="font-bold text-stone-900 text-base group-hover:text-[#A95031] transition truncate">
+            {lib.name}
+          </h3>
+          <p className="text-xs text-stone-500 flex items-center gap-1 mt-1 truncate">
+            <MapPin className="w-3.5 h-3.5 text-[#A95031] shrink-0" />
+            {lib.address}, {lib.city}
+          </p>
+
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {lib.amenities.slice(0, 3).map((amenity) => (
+              <span
+                key={amenity}
+                className="text-[10px] font-semibold bg-[#F7EBE4] text-[#6E2D17] border border-[#A95031]/20 px-2.5 py-0.5 rounded-md"
+              >
+                {amenity}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 py-3 border-t border-stone-100 bg-stone-50/50 flex items-center justify-between text-xs text-stone-500">
+        <span className="font-medium text-stone-500">Starting from</span>
+        <span className="font-black text-[#A95031] text-base">{"₹" + lowestPrice} <span className="text-[10px] font-normal text-stone-400">per slot</span></span>
+      </div>
+    </Link>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { user } = useAuth();
 
+  // Search state
   const [cityQuery, setCityQuery] = useState("");
   const [startDateQuery, setStartDateQuery] = useState("");
   const [endDateQuery, setEndDateQuery] = useState("");
-  const [guestsQuery, setGuestsQuery] = useState(1);
   const [activeSearch, setActiveSearch] = useState("");
+  const [searchStep, setSearchStep] = useState<1 | 2>(1);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // Filters state
   const [showFilters, setShowFilters] = useState(false);
   const [maxPrice, setMaxPrice] = useState<number>(500);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
+
+  // Popular shortcut cities
+  const popularCities = ["Gurugram", "Mumbai", "Delhi"];
 
   // Fetch libraries using TanStack Query
   const { data: libraries, isLoading, error } = useQuery<LibraryListItem[]>({
@@ -55,7 +120,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (user?.role === "OWNER") {
-      router.push("/owner/dashboard");
+      router.push("/owner/libraries/create");
     }
   }, [user, router]);
 
@@ -77,9 +142,22 @@ export default function HomePage() {
     );
   };
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCityShortcutSelect = (city: string) => {
+    setCityQuery(city);
+    setSearchStep(2);
+  };
+
+  const handleExecuteSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setActiveSearch(cityQuery);
+    setHasSearched(true);
+    // Smooth scroll down to listings
+    setTimeout(() => {
+      const listingsEl = document.getElementById("search-results-section");
+      if (listingsEl) {
+        listingsEl.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 100);
   };
 
   // Filter listings client side based on pricing and amenities selection
@@ -100,112 +178,103 @@ export default function HomePage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full bg-[#F8F5EE] min-h-screen text-[#221C19]">
       
-      {/* Search Header Banner */}
-      <div className="bg-slate-900 text-white rounded-3xl p-8 md:p-12 mb-12 relative overflow-hidden flex flex-col justify-center items-center shadow-lg border border-slate-800">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-800/50 via-slate-900/90 to-slate-900 pointer-events-none" />
+      {/* Full-Screen Warm Hero Section */}
+      <div className="w-full bg-[#F8F5EE] text-[#221C19] min-h-[calc(100vh-80px)] flex flex-col justify-between select-none relative overflow-hidden px-4 sm:px-8 pb-8 pt-4">
         
-        <h1 className="text-3xl md:text-5xl font-black text-center relative z-10 tracking-tight leading-tight max-w-2xl mb-4 font-serif">
-          Find your perfect study environment
-        </h1>
-        <p className="text-slate-400 text-center relative z-10 text-base md:text-lg max-w-md mb-8">
-          Book dedicated quiet desks, premium ergonomics, and amenities in verified study libraries.
-        </p>
+        {/* Hero Title */}
+        <div className="text-center z-10 max-w-4xl mx-auto mt-8 sm:mt-14">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold font-serif text-[#221C19] tracking-tight leading-tight text-center drop-shadow-sm">
+            Find Your Place to Learn and Grow
+          </h1>
+        </div>
 
-        {/* Floating Search Bar */}
-        <form
-          onSubmit={handleSearchSubmit}
-          className="w-full max-w-4xl bg-white text-gray-800 rounded-2xl md:rounded-full p-2.5 md:p-1.5 flex flex-col md:flex-row items-center gap-3 md:gap-0 shadow-2xl border border-gray-100 relative z-10 w-full"
-        >
-          {/* Where */}
-          <div className="flex-1 flex flex-col items-start px-5 w-full md:border-r md:border-gray-200">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">Where</label>
+        {/* Sleek Horizontal Search Filter Bar */}
+        <div className="relative z-20 max-w-4xl mx-auto w-full mt-auto mb-10 bg-white p-3 sm:p-4 rounded-full shadow-2xl border border-stone-200/80 text-[#221C19] flex flex-col md:flex-row items-center gap-3 md:gap-0 divide-y md:divide-y-0 md:divide-x divide-stone-200/80">
+          
+          {/* 1. Location Input */}
+          <div className="flex-1 px-6 py-1 w-full">
+            <label className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#6B5E57] block mb-1">LOCATION</label>
             <input
               type="text"
               value={cityQuery}
               onChange={(e) => setCityQuery(e.target.value)}
-              placeholder="Search destinations"
-              className="w-full text-xs text-gray-700 bg-transparent outline-none placeholder-gray-400 font-medium"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleExecuteSearch(e);
+              }}
+              placeholder="Where do you want to study?"
+              className="w-full text-xs sm:text-sm font-bold text-black bg-transparent outline-none placeholder:text-[#88786F]"
             />
           </div>
 
-          {/* When (From Date) */}
-          <div className="flex-1 flex flex-col items-start px-5 w-full md:border-r md:border-gray-200">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">From Date</label>
-            <input
-              type="date"
-              value={startDateQuery}
-              onChange={(e) => setStartDateQuery(e.target.value)}
-              className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-medium"
-            />
+          {/* 2. Booking Dates */}
+          <div className="flex-1 px-6 py-1 w-full">
+            <label className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#6B5E57] block mb-1">BOOKING DATES</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={startDateQuery}
+                onChange={(e) => setStartDateQuery(e.target.value)}
+                className="w-full text-xs sm:text-sm font-extrabold text-black bg-transparent outline-none cursor-pointer"
+              />
+              <span className="text-black font-extrabold text-xs">-</span>
+              <input
+                type="date"
+                value={endDateQuery}
+                min={startDateQuery}
+                onChange={(e) => setEndDateQuery(e.target.value)}
+                className="w-full text-xs sm:text-sm font-extrabold text-black bg-transparent outline-none cursor-pointer"
+              />
+            </div>
           </div>
 
-          {/* When (To Date) */}
-          <div className="flex-1 flex flex-col items-start px-5 w-full md:border-r md:border-gray-200">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">To Date</label>
-            <input
-              type="date"
-              value={endDateQuery}
-              min={startDateQuery}
-              onChange={(e) => setEndDateQuery(e.target.value)}
-              className="w-full text-xs text-gray-700 bg-transparent outline-none cursor-pointer font-medium"
-            />
+          {/* 3. Search Button */}
+          <div className="p-1 w-full md:w-auto shrink-0">
+            <button
+              type="button"
+              onClick={handleExecuteSearch}
+              className="w-full md:w-auto bg-[#A95031] hover:bg-[#8E3F24] text-white text-xs sm:text-sm font-extrabold px-8 py-3.5 rounded-full transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Search className="w-4 h-4 text-white" />
+              <span>Search</span>
+            </button>
           </div>
 
-          {/* Who */}
-          <div className="flex-1 flex flex-col items-start px-5 w-full">
-            <label className="text-[10px] font-extrabold uppercase tracking-wider text-gray-800 mb-0.5">Who</label>
-            <input
-              type="number"
-              min="1"
-              value={guestsQuery}
-              onChange={(e) => setGuestsQuery(Number(e.target.value))}
-              placeholder="Add guests"
-              className="w-full text-xs text-gray-700 bg-transparent outline-none font-medium"
-            />
-          </div>
-
-          {/* Red Search Button */}
-          <button
-            type="submit"
-            className="w-full md:w-auto bg-brand hover:bg-brand-hover text-white p-3.5 rounded-xl md:rounded-full transition flex items-center justify-center cursor-pointer shrink-0 shadow-md md:mr-1"
-          >
-            <Search className="w-5 h-5" />
-            <span className="md:hidden ml-2 font-bold text-sm">Search</span>
-          </button>
-        </form>
+        </div>
       </div>
 
-      {/* Discovery Section */}
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
+      {hasSearched ? (
+        <div id="search-results-section" className="bg-[#F8F5EE] text-[#221C19] py-12 px-4 sm:px-6 lg:px-8 animate-in fade-in duration-300 border-t border-stone-200/60">
+          <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col lg:flex-row gap-8 items-start">
         
         {/* Toggle Filters Button for Mobile */}
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="lg:hidden w-full border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold p-3.5 rounded-xl flex items-center justify-center gap-2 transition"
+          className="lg:hidden w-full border border-stone-200/80 bg-white hover:bg-stone-50 text-stone-800 font-semibold p-3.5 rounded-xl flex items-center justify-center gap-2 transition shadow-sm"
         >
-          <SlidersHorizontal className="w-4 h-4" />
+          <SlidersHorizontal className="w-4 h-4 text-[#A95031]" />
           {showFilters ? "Hide Filters" : "Show Filters"}
         </button>
 
         {/* Sidebar Filters */}
         <aside
-          className={`w-full lg:w-72 shrink-0 border border-gray-100 rounded-2xl p-6 bg-white shadow-sm sticky top-24 ${
+          className={`w-full lg:w-72 shrink-0 border border-stone-200/80 rounded-2xl p-5 bg-white shadow-sm sticky top-24 ${
             showFilters ? "block" : "hidden lg:block"
           }`}
         >
-          <h3 className="text-lg font-bold text-gray-950 mb-6 flex items-center gap-2 border-b border-gray-100 pb-3">
-            <SlidersHorizontal className="w-4 h-4 text-gray-500" />
+          <h3 className="text-base font-bold text-stone-900 mb-5 flex items-center gap-2 border-b border-stone-200/60 pb-3">
+            <SlidersHorizontal className="w-4 h-4 text-[#A95031]" />
             Filters
           </h3>
 
           {/* Pricing slider */}
-          <div className="mb-8">
-            <h4 className="text-sm font-semibold text-gray-900 mb-3">Price range (max per slot)</h4>
-            <div className="flex justify-between text-xs font-semibold text-gray-500 mb-2">
+          <div className="mb-6">
+            <h4 className="text-xs font-semibold text-stone-700 mb-2">Price range (max per slot)</h4>
+            <div className="flex justify-between items-center text-xs font-semibold text-stone-400 mb-2">
               <span>₹50</span>
-              <span className="text-brand">₹{maxPrice}</span>
+              <span className="text-[#A95031] font-black text-sm">{"₹" + maxPrice}</span>
             </div>
             <input
               type="range"
@@ -214,23 +283,23 @@ export default function HomePage() {
               step="25"
               value={maxPrice}
               onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="w-full accent-brand h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer"
+              className="w-full accent-blue-600 h-1.5 bg-stone-100 rounded-lg appearance-none cursor-pointer"
             />
           </div>
 
           {/* Amenities filter */}
           <div>
-            <h4 className="text-sm font-semibold text-gray-900 mb-4">Amenities</h4>
-            <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-stone-700 mb-3">Amenities</h4>
+            <div className="space-y-2.5">
               {allAmenities.map((amenity) => (
-                <label key={amenity} className="flex items-center gap-3 text-sm text-gray-600 cursor-pointer">
+                <label key={amenity} className="flex items-center gap-2.5 text-xs text-stone-600 hover:text-stone-900 cursor-pointer transition">
                   <input
                     type="checkbox"
                     checked={selectedAmenities.includes(amenity)}
                     onChange={() => handleAmenityToggle(amenity)}
-                    className="w-4.5 h-4.5 rounded border-gray-300 text-brand focus:ring-brand accent-brand cursor-pointer"
+                    className="w-4 h-4 rounded border-stone-300 text-[#A95031] focus:ring-[#A95031] accent-[#A95031] cursor-pointer"
                   />
-                  {amenity}
+                  <span>{amenity}</span>
                 </label>
               ))}
             </div>
@@ -238,135 +307,70 @@ export default function HomePage() {
         </aside>
 
         {/* Main Grid */}
-        <main className="flex-grow w-full">
+        <div className="flex-1 w-full">
+          
+          {/* Section Heading */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-[#221C19]">
+                {activeSearch ? `Study Spaces in ${activeSearch}` : "Available Study Spaces"}
+              </h2>
+              <p className="text-xs text-[#6B5E57] mt-1">
+                {filteredLibraries?.length || 0} reading rooms available for instant seat selection.
+              </p>
+            </div>
+          </div>
+
           {isLoading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="animate-pulse bg-white border border-gray-100 rounded-2xl overflow-hidden h-80">
-                  <div className="bg-gray-200 h-48 w-full" />
-                  <div className="p-4 space-y-3">
-                    <div className="h-4 bg-gray-200 rounded w-2/3" />
-                    <div className="h-3 bg-gray-200 rounded w-1/3" />
-                    <div className="h-6 bg-gray-200 rounded w-1/4 mt-4" />
-                  </div>
-                </div>
+                <div key={i} className="animate-pulse bg-white border border-stone-200/80 rounded-2xl h-80 w-full" />
               ))}
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-100 rounded-2xl p-6 text-center text-red-700 max-w-md mx-auto">
-              <ShieldAlert className="w-8 h-8 text-red-500 mx-auto mb-3" />
-              <h3 className="font-bold text-lg mb-1">Error Loading Spaces</h3>
-              <p className="text-sm text-red-600">Please make sure the backend server is running and try again.</p>
+            <div className="text-center py-12 bg-red-50 rounded-2xl border border-red-200">
+              <ShieldAlert className="w-10 h-10 text-red-500 mx-auto mb-2" />
+              <p className="font-bold text-red-700">Failed to load study spaces.</p>
+              <p className="text-xs text-red-500 mt-1">Please verify database connectivity.</p>
             </div>
           )}
 
-          {!isLoading && !error && filteredLibraries?.length === 0 && (
-            <div className="text-center py-20 bg-gray-55/10 border border-dashed border-gray-200 rounded-2xl max-w-lg mx-auto px-6">
-              <CompassIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <h3 className="font-bold text-gray-800 text-lg mb-1">No study spaces found</h3>
-              <p className="text-sm text-gray-500">Try adjusting your filters or searching a different city.</p>
+          {!isLoading && !error && filteredLibraries && filteredLibraries.length === 0 && (
+            <div className="text-center py-20 border border-dashed border-stone-200/80 rounded-3xl bg-white">
+              <MapPin className="w-12 h-12 text-[#A0938A] mx-auto mb-3" />
+              <h3 className="text-lg font-bold text-[#221C19] mb-1">No Study Spaces Found</h3>
+              <p className="text-xs text-[#6B5E57] max-w-sm mx-auto mb-6">
+                We couldn&apos;t find any reading rooms matching &quot;{activeSearch || "your criteria"}&quot;. Try adjusting your filters or searching another city.
+              </p>
+              <button
+                onClick={() => {
+                  setCityQuery("");
+                  setActiveSearch("");
+                  setSelectedAmenities([]);
+                  setMaxPrice(600);
+                  setSearchStep(1);
+                }}
+                className="bg-[#A95031] hover:bg-[#8E3F24] text-white text-xs font-bold px-6 py-2.5 rounded-full transition shadow-md cursor-pointer"
+              >
+                Reset All Filters
+              </button>
             </div>
           )}
 
           {!isLoading && !error && filteredLibraries && filteredLibraries.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredLibraries.map((lib) => {
-                const cheapestSlot = lib.slotTypes.length
-                  ? Math.min(...lib.slotTypes.map((s) => Number(s.price)))
-                  : 0;
-
-                const displayImage = lib.photos.length
-                  ? lib.photos[0]
-                  : "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=600&q=80";
-
-                return (
-                  <Link
-                    href={`/libraries/${lib.id}${startDateQuery ? `?startDate=${startDateQuery}&endDate=${endDateQuery}` : ""}`}
-                    key={lib.id}
-                    className="group bg-white border border-gray-150 border-gray-100 rounded-2xl overflow-hidden card-hover-effect flex flex-col shadow-sm cursor-pointer"
-                  >
-                    {/* Cover image */}
-                    <div className="relative h-48 w-full bg-gray-100 overflow-hidden shrink-0">
-                      <img
-                        src={displayImage}
-                        alt={lib.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
-                      <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm shadow-sm py-1 px-2.5 rounded-full text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-brand" />
-                        {lib.city}
-                      </div>
-                    </div>
-
-                    {/* Metadata */}
-                    <div className="p-5 flex-grow flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <h3 className="font-bold text-gray-900 group-hover:text-brand transition text-base truncate">
-                            {lib.name}
-                          </h3>
-                          <div className="flex items-center gap-1 shrink-0 text-sm font-bold text-gray-800">
-                            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                            {lib.rating ? lib.rating.toFixed(1) : "New"}
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 line-clamp-1 mb-3">{lib.address}</p>
-                        
-                        {/* Amenities pills */}
-                        <div className="flex flex-wrap gap-1 mb-4">
-                          {lib.amenities.slice(0, 3).map((amenity) => (
-                            <span
-                              key={amenity}
-                              className="text-[10px] font-semibold bg-gray-50 text-gray-500 border border-gray-100 px-2 py-0.5 rounded-full"
-                            >
-                              {amenity}
-                            </span>
-                          ))}
-                          {lib.amenities.length > 3 && (
-                            <span className="text-[10px] font-semibold text-gray-400 px-1">
-                              +{lib.amenities.length - 3} more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="border-t border-gray-100 pt-3.5 flex items-end justify-between mt-2">
-                        <span className="text-xs font-semibold text-gray-500">Starting from</span>
-                        <span className="text-base font-black text-gray-950">
-                          ₹{cheapestSlot} <span className="text-xs font-semibold text-gray-500">/ slot</span>
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLibraries.map((lib) => (
+                <LibraryCard key={lib.id} lib={lib} />
+              ))}
             </div>
           )}
-        </main>
+        </div>
       </div>
-
     </div>
-  );
-}
-
-// Simple compass icon for empty state
-function CompassIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-      {...props}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-.554-8.243-1.568m16.486 0A11.954 11.954 0 0 0 12 7.5a11.954 11.954 0 0 0-8.243 1.432"
-      />
-    </svg>
+  </div>
+  ) : null}
+    </div>
   );
 }

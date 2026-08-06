@@ -341,29 +341,29 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Right Column - Sticky Reservation Panel */}
         <div className="w-full lg:sticky lg:top-24">
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-lg sticky-panel-shadow">
+          <div className="bg-white border border-[#E8E2D5] rounded-2xl p-6 shadow-lg sticky-panel-shadow">
             
             {/* Price section */}
             <div className="flex items-end justify-between mb-5">
-              <span className="text-xl font-black text-gray-950">
-                ₹{displayPrice} <span className="text-sm font-semibold text-gray-500">/ slot</span>
+              <span className="text-xl font-black text-[#221C19]">
+                ₹{displayPrice} <span className="text-sm font-semibold text-[#6B5E57]">/ slot</span>
               </span>
-              <span className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+              <span className="text-xs font-semibold text-[#6B5E57] flex items-center gap-1">
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 {library.rating ? `${library.rating.toFixed(1)}` : "New"}
               </span>
             </div>
 
             {/* Inputs widget panel */}
-            <div className="border border-gray-300 rounded-xl overflow-hidden mb-5">
+            <div className="border border-[#E8E2D5] bg-[#F8F5EE] rounded-xl overflow-hidden mb-5">
               
               {/* Date selection */}
-              <div className="grid grid-cols-2 border-b border-gray-300">
-                <div className="p-3 border-r border-gray-300">
-                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+              <div className="grid grid-cols-2 border-b border-[#E8E2D5]">
+                <div className="p-3 border-r border-[#E8E2D5]">
+                  <label className="block text-[10px] font-black text-[#6B5E57] uppercase mb-1">
                     From Date
                   </label>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-800 font-semibold cursor-pointer">
+                  <div className="flex items-center gap-1.5 text-xs text-[#221C19] font-semibold cursor-pointer">
                     <Calendar className="w-3.5 h-3.5 text-brand shrink-0" />
                     <input
                       type="date"
@@ -375,23 +375,23 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
                           setSelectedEndDate(e.target.value);
                         }
                       }}
-                      className="outline-none bg-transparent w-full text-gray-850 text-xs font-bold"
+                      className="outline-none bg-transparent w-full text-[#221C19] text-xs font-bold"
                     />
                   </div>
                 </div>
 
                 <div className="p-3">
-                  <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                  <label className="block text-[10px] font-black text-[#6B5E57] uppercase mb-1">
                     To Date
                   </label>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-800 font-semibold cursor-pointer">
+                  <div className="flex items-center gap-1.5 text-xs text-[#221C19] font-semibold cursor-pointer">
                     <Calendar className="w-3.5 h-3.5 text-brand shrink-0" />
                     <input
                       type="date"
                       min={selectedStartDate}
                       value={selectedEndDate}
                       onChange={(e) => setSelectedEndDate(e.target.value)}
-                      className="outline-none bg-transparent w-full text-gray-850 text-xs font-bold"
+                      className="outline-none bg-transparent w-full text-[#221C19] text-xs font-bold"
                     />
                   </div>
                 </div>
@@ -399,13 +399,13 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
 
               {/* Slot selection dropdown */}
               <div className="p-3">
-                <label className="block text-[10px] font-black text-gray-500 uppercase mb-1">
+                <label className="block text-[10px] font-black text-[#6B5E57] uppercase mb-1">
                   Select Timing Slot
                 </label>
                 <select
                   value={selectedSlotId}
                   onChange={(e) => setSelectedSlotId(e.target.value)}
-                  className="w-full bg-transparent outline-none text-sm text-gray-800 font-semibold py-1 cursor-pointer"
+                  className="w-full bg-transparent outline-none text-sm text-[#221C19] font-semibold py-1 cursor-pointer"
                 >
                   <option value="">-- Choose Slot --</option>
                   {library.slotTypes.map((slot) => (
@@ -426,7 +426,7 @@ export default function LibraryDetailPage({ params }: { params: Promise<{ id: st
               Check availability
             </button>
 
-            <p className="text-[11px] text-gray-400 text-center mt-4">
+            <p className="text-[11px] text-[#A0938A] text-center mt-4">
               You won't be charged yet. Seat map selection is on the next step.
             </p>
           </div>

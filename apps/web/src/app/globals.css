@@ -4,14 +4,14 @@
 
 @layer base {
   body {
-    @apply text-slate-800 bg-white antialiased;
+    @apply text-[#221C19] bg-transparent antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 }
 
-/* Airbnb elements custom micro-interactions */
+/* Custom micro-interactions */
 .sticky-panel-shadow {
-  box-shadow: rgba(0, 0, 0, 0.12) 0px 6px 16px;
+  box-shadow: rgba(34, 28, 25, 0.08) 0px 6px 16px;
 }
 
 .card-hover-effect {
@@ -19,5 +19,18 @@
 }
 
 .card-hover-effect:hover {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 20px -5px rgba(200, 90, 50, 0.12), 0 4px 6px -4px rgba(34, 28, 25, 0.05);
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-scroll {
+  animation: scroll 40s linear infinite;
+}
+
+.animate-scroll:hover {
+  animation-play-state: paused;
 }

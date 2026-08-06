@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppProvider } from "../context/AppContext";
 import { ToastProvider } from "../context/ToastContext";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import NavigationWrapper from "../components/NavigationWrapper";
 
 export const metadata: Metadata = {
   title: "Alcove | Find & Reserve Study Seats",
@@ -26,12 +25,18 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="flex flex-col min-h-screen bg-white">
+      <body className="flex flex-col min-h-screen text-[#221C19] antialiased">
         <AppProvider>
           <ToastProvider>
-            <Navbar />
-            <main className="flex-grow">{children}</main>
-            <Footer />
+            <div className="bg-[url('https://studyspace-photos.s3.ap-south-1.amazonaws.com/useful/image-removebg-preview+(2).png')] bg-cover bg-center bg-no-repeat bg-fixed min-h-screen relative flex flex-col flex-grow">
+              {/* Soft subtle eggshell overlay to keep background image nicely visible while maintaining readability */}
+              <div className="absolute inset-0 bg-[#F8F5EE]/50 pointer-events-none z-0" />
+              
+              {/* Content wrapper */}
+              <div className="relative z-10 flex flex-col min-h-screen flex-grow">
+                <NavigationWrapper>{children}</NavigationWrapper>
+              </div>
+            </div>
           </ToastProvider>
         </AppProvider>
       </body>
