@@ -6,7 +6,7 @@ import { validateBody } from "../middleware/validation";
 import { SignupSchema, SigninSchema, UpdateProfileSchema } from "@studyspace/shared";
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import { authMiddleware } from "../middleware/auth";
-import { getPresignedDownloadUrl, getPresignedAvatarUploadUrl } from "../utils/s3";
+import { getPresignedDownloadUrl, getPresignedAvatarUploadUrl, uploadFileToS3 } from "../utils/s3";
 import { authRateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
@@ -281,6 +281,64 @@ router.post("/avatar/upload-url", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Avatar presigned upload URL error:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Direct S3 Avatar Photo Upload Endpoint
+router.post("/avatar/upload", authMiddleware, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const { image, fileName, fileType } = req.body;
+    if (!image) {
+      return res.status(400).json({ message: "Base64 image data is required" });
+    }
+
+    let contentType = fileType || "image/jpeg";
+    let base64Data = image;
+
+    if (image.includes(";base64,")) {
+      const parts = image.split(";base64,");
+      contentType = parts[0].replace("data:", "") || contentType;
+      base64Data = parts[1];
+    }
+
+    const buffer = Buffer.from(base64Data, "base64");
+    const ext = (fileName && fileName.split(".").pop()) || contentType.split("/")[1] || "jpg";
+    const folder = req.user.role === "OWNER" ? "owner_profile" : "avatars";
+    const key = `${folder}/${req.user.userId}_${Date.now()}.${ext}`;
+
+    // Upload photo directly to S3 bucket in target folder (owner_profile for hosts)
+    await uploadFileToS3(buffer, key, contentType);
+
+    // Save S3 key safely in PostgreSQL User table
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { avatarUrl: key },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        avatarUrl: true,
+      },
+    });
+
+    // Generate signed download URL for safe S3 image fetching
+    const signedAvatar = await getPresignedDownloadUrl(key);
+
+    return res.json({
+      message: "Avatar uploaded successfully to S3",
+      avatarUrl: signedAvatar,
+      key,
+      user: { ...updatedUser, avatarUrl: signedAvatar },
+    });
+  } catch (error: any) {
+    console.error("Direct S3 Avatar Upload Error:", error);
+    return res.status(500).json({ message: error?.message || "Failed to upload photo to S3" });
   }
 });
 

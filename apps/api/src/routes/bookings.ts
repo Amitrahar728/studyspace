@@ -372,16 +372,16 @@ router.get("/me", authMiddleware, async (req, res) => {
 });
 
 // GET /bookings/owner - Fetch bookings for libraries owned by the authenticated user (for reception validation)
-router.get("/owner", authMiddleware, requireRole([Role.OWNER, Role.ADMIN]), async (req, res) => {
+router.get("/owner", authMiddleware, async (req, res) => {
   try {
     const ownerId = req.user!.userId;
     const { libraryId } = req.query;
 
-    const whereClause: any = {
-      library: req.user!.role === Role.ADMIN ? {} : { ownerId },
-    };
+    const whereClause: any = req.user!.role === Role.ADMIN
+      ? {}
+      : { library: { ownerId } };
 
-    if (libraryId && typeof libraryId === "string") {
+    if (libraryId && typeof libraryId === "string" && libraryId !== "ALL") {
       whereClause.libraryId = libraryId;
     }
 
