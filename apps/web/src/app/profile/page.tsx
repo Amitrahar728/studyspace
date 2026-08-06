@@ -3,7 +3,30 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../context/AppContext";
 import { useToast } from "../../context/ToastContext";
-import { User, Camera, Loader2, Save, Briefcase, Target, BookOpen, Heart, Building, Award } from "lucide-react";
+import {
+  Camera,
+  Loader2,
+  X,
+  ChevronRight,
+  Briefcase,
+  User,
+  Mail,
+  Phone,
+  Heart,
+  BookOpen,
+  Target,
+} from "lucide-react";
+
+interface ProfileField {
+  id: string;
+  icon: React.ReactNode;
+  label: string;
+  title: string;
+  description: string;
+  placeholder: string;
+  value: string;
+  maxLength?: number;
+}
 
 export default function ProfilePage() {
   const { user, token, updateUser } = useAuth();
@@ -14,8 +37,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // Form states
+  // DB-backed user profile state
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [bio, setBio] = useState("");
@@ -23,13 +47,18 @@ export default function ProfilePage() {
   const [hobbies, setHobbies] = useState("");
   const [currentlyDoing, setCurrentlyDoing] = useState("");
   const [targetGoal, setTargetGoal] = useState("");
-  const [businessInfo, setBusinessInfo] = useState("");
-  const [experience, setExperience] = useState("");
-  const [description, setDescription] = useState("");
 
-  // Fetch complete user profile data
+  // Modal active state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [activeField, setActiveField] = useState<ProfileField | null>(null);
+  const [modalInputValue, setModalInputValue] = useState("");
+
+  // Fetch complete profile from backend DB
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
     const fetchProfile = async () => {
       setLoading(true);
@@ -42,6 +71,7 @@ export default function ProfilePage() {
         if (res.ok) {
           const data = await res.json();
           setName(data.name || "");
+          setEmail(data.email || user?.email || "");
           setPhone(data.phone || "");
           setAvatarUrl(data.avatarUrl || null);
           setBio(data.bio || "");
@@ -49,9 +79,6 @@ export default function ProfilePage() {
           setHobbies(data.hobbies || "");
           setCurrentlyDoing(data.currentlyDoing || "");
           setTargetGoal(data.targetGoal || "");
-          setBusinessInfo(data.businessInfo || "");
-          setExperience(data.experience || "");
-          setDescription(data.description || "");
         }
       } catch (err) {
         console.error("Failed to fetch profile:", err);
@@ -61,9 +88,9 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-  }, [token]);
+  }, [token, user]);
 
-  // Handle Avatar S3 Upload via Presigned PUT URL
+  // Avatar Upload to S3
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
@@ -75,136 +102,237 @@ export default function ProfilePage() {
 
     setUploadingAvatar(true);
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-      
-      // 1. Request presigned PUT upload URL
-      const urlRes = await fetch(`${apiBase}/auth/avatar/upload-url`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ fileName: file.name, fileType: file.type }),
-      });
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Data = reader.result as string;
+          const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
 
-      if (!urlRes.ok) throw new Error("Failed to generate avatar upload URL");
-      const { uploadUrl, key } = await urlRes.json();
+          const res = await fetch(`${apiBase}/auth/avatar/upload`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              image: base64Data,
+              fileName: file.name,
+              fileType: file.type,
+            }),
+          });
 
-      // 2. Direct S3 Upload via Presigned PUT URL
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.message || "Failed to upload photo to S3");
+          }
 
-      if (!uploadRes.ok) throw new Error("Failed to upload avatar image to S3");
+          const data = await res.json();
+          setAvatarUrl(data.avatarUrl);
 
-      // 3. Update User profile with object key
-      const updateRes = await fetch(`${apiBase}/users/me`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ avatarUrl: key }),
-      });
+          if (user) {
+            updateUser({ ...user, avatarUrl: data.avatarUrl });
+          }
 
-      if (!updateRes.ok) throw new Error("Failed to update user profile photo");
-      const updatedData = await updateRes.json();
+          showToast("Profile photo uploaded to S3 successfully!", "success");
+        } catch (err: any) {
+          console.error("Avatar upload error:", err);
+          showToast(err.message || "Failed to upload photo to S3", "error");
+        } finally {
+          setUploadingAvatar(false);
+        }
+      };
 
-      setAvatarUrl(updatedData.avatarUrl);
-      if (user) {
-        updateUser({ ...user, avatarUrl: updatedData.avatarUrl });
-      }
-      showToast("Profile picture updated successfully!", "success");
+      reader.onerror = () => {
+        showToast("Error reading selected photo file", "error");
+        setUploadingAvatar(false);
+      };
+
+      reader.readAsDataURL(file);
     } catch (err: any) {
       console.error("Avatar upload error:", err);
-      showToast(err.message || "Failed to upload avatar", "error");
-    } finally {
+      showToast(err.message || "Failed to upload photo to S3", "error");
       setUploadingAvatar(false);
     }
   };
 
-  // Save profile changes
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
+  // Open Edit Modal for a given field
+  const openModal = (field: ProfileField) => {
+    setActiveField(field);
+    setModalInputValue(field.value);
+    setModalOpen(true);
+  };
 
-    setSaving(true);
-    try {
-      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-      const res = await fetch(`${apiBase}/users/me`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          phone,
-          bio,
-          occupation,
-          hobbies,
-          currentlyDoing,
-          targetGoal,
-          businessInfo,
-          experience,
-          description,
-        }),
-      });
+  // Save Modal Field to DB
+  const handleSaveModal = async () => {
+    if (!activeField) return;
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update profile");
+    const val = modalInputValue.trim();
+    const fieldId = activeField.id;
+
+    // Update local state
+    if (fieldId === "name") setName(val);
+    else if (fieldId === "phone") setPhone(val);
+    else if (fieldId === "bio") setBio(val);
+    else if (fieldId === "occupation") setOccupation(val);
+    else if (fieldId === "hobbies") setHobbies(val);
+    else if (fieldId === "currentlyDoing") setCurrentlyDoing(val);
+    else if (fieldId === "targetGoal") setTargetGoal(val);
+
+    setModalOpen(false);
+
+    // Save directly to DB via API
+    if (token) {
+      setSaving(true);
+      try {
+        const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+        const updateBody: any = {};
+        if (fieldId === "name") updateBody.name = val;
+        if (fieldId === "phone") updateBody.phone = val;
+        if (fieldId === "bio") updateBody.bio = val;
+        if (fieldId === "occupation") updateBody.occupation = val;
+        if (fieldId === "hobbies") updateBody.hobbies = val;
+        if (fieldId === "currentlyDoing") updateBody.currentlyDoing = val;
+        if (fieldId === "targetGoal") updateBody.targetGoal = val;
+
+        if (Object.keys(updateBody).length > 0) {
+          const res = await fetch(`${apiBase}/users/me`, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(updateBody),
+          });
+          if (res.ok) {
+            const updatedUser = await res.json();
+            updateUser(updatedUser);
+            showToast("Profile saved to database!", "success");
+          } else {
+            showToast("Failed to save changes", "error");
+          }
+        }
+      } catch (err) {
+        console.error("Save error:", err);
+        showToast("Error updating profile", "error");
+      } finally {
+        setSaving(false);
       }
-
-      const updatedUser = await res.json();
-      updateUser(updatedUser);
-      showToast("Profile updated successfully!", "success");
-    } catch (err: any) {
-      console.error("Save profile error:", err);
-      showToast(err.message || "Failed to update profile", "error");
-    } finally {
-      setSaving(false);
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-[75vh] flex items-center justify-center text-sm text-gray-500">
-        <Loader2 className="w-5 h-5 animate-spin mr-2 text-brand" /> Loading profile...
+        <Loader2 className="w-5 h-5 animate-spin mr-2 text-indigo-600" /> Loading profile...
       </div>
     );
   }
 
-  const isOwner = user?.role === "OWNER";
+  // Strictly DB-backed Profile Fields
+  const profileFields: ProfileField[] = [
+    {
+      id: "name",
+      icon: <User className="w-4 h-4 text-gray-700" />,
+      label: "Full Name",
+      title: "What is your name?",
+      description: "Enter your full name for your profile.",
+      placeholder: "Enter your name",
+      value: name,
+      maxLength: 50,
+    },
+    {
+      id: "email",
+      icon: <Mail className="w-4 h-4 text-gray-700" />,
+      label: "Email Address",
+      title: "Your email address",
+      description: "Your primary account email address.",
+      placeholder: "enter mail",
+      value: email,
+      maxLength: 60,
+    },
+    {
+      id: "phone",
+      icon: <Phone className="w-4 h-4 text-gray-700" />,
+      label: "Phone Number",
+      title: "What is your phone number?",
+      description: "Enter your phone number so hosts or students can connect with you.",
+      placeholder: "enter phone number",
+      value: phone,
+      maxLength: 20,
+    },
+    {
+      id: "occupation",
+      icon: <Briefcase className="w-4 h-4 text-gray-700" />,
+      label: "Current Occupation / Work",
+      title: "What is your occupation?",
+      description: "Tell others about your work or field of study.",
+      placeholder: "e.g. Software Engineer / Student",
+      value: occupation,
+      maxLength: 50,
+    },
+    {
+      id: "hobbies",
+      icon: <Heart className="w-4 h-4 text-gray-700" />,
+      label: "Hobbies & Interests",
+      title: "What are your hobbies & interests?",
+      description: "Share what you love doing in your free time.",
+      placeholder: "e.g. Reading, Coding, Cricket",
+      value: hobbies,
+      maxLength: 60,
+    },
+    {
+      id: "currentlyDoing",
+      icon: <BookOpen className="w-4 h-4 text-gray-700" />,
+      label: "Currently Preparing / Focus",
+      title: "What are you currently preparing for?",
+      description: "Share your current exam or project focus.",
+      placeholder: "e.g. UPSC Exam / Semester Finals",
+      value: currentlyDoing,
+      maxLength: 60,
+    },
+    {
+      id: "targetGoal",
+      icon: <Target className="w-4 h-4 text-gray-700" />,
+      label: "Target Goal",
+      title: "What is your target goal?",
+      description: "Set a clear goal for your study milestones.",
+      placeholder: "e.g. Clear GATE with Top Rank",
+      value: targetGoal,
+      maxLength: 60,
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto space-y-8">
-        
-        {/* Profile Card Header */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6">
-          <div className="relative group">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={name}
-                className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-2 border-gray-100 shadow-md"
-              />
-            ) : (
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900 text-white flex items-center justify-center text-3xl font-bold border-2 border-gray-100 shadow-md">
-                {name.charAt(0).toUpperCase()}
-              </div>
-            )}
+    <div className="min-h-screen bg-white text-gray-900 py-10 px-4 sm:px-8 lg:px-16 selection:bg-indigo-100 font-sans">
+      <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-12 lg:gap-16">
 
+        {/* Left Column - Large Avatar Ring */}
+        <div className="flex flex-col items-center md:items-start shrink-0">
+          <div className="relative group">
+            <div className="w-44 h-44 sm:w-52 sm:h-52 rounded-full bg-[#ECE6FE] text-[#582BE8] flex items-center justify-center text-6xl sm:text-7xl font-bold shadow-sm overflow-hidden">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={name || "User Avatar"}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>{(name || "U").charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+
+            {/* Small Floating Camera Add Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingAvatar}
-              className="absolute bottom-0 right-0 bg-brand text-white p-2 rounded-full shadow-md hover:bg-brand-hover transition cursor-pointer disabled:opacity-50"
-              title="Change Profile Photo"
+              className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white text-gray-900 text-xs font-bold px-3.5 py-1.5 rounded-full shadow-md border border-gray-200 hover:bg-gray-50 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              {uploadingAvatar ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+              {uploadingAvatar ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Camera className="w-3.5 h-3.5 text-gray-700" />
+              )}
+              <span>Add</span>
             </button>
 
             <input
@@ -215,196 +343,166 @@ export default function ProfilePage() {
               className="hidden"
             />
           </div>
-
-          <div className="text-center sm:text-left space-y-1">
-            <h1 className="text-2xl font-black text-gray-900">{name}</h1>
-            <p className="text-sm font-medium text-gray-500">{user?.email}</p>
-            <div className="inline-flex items-center gap-2 mt-2">
-              <span className="text-xs font-extrabold tracking-wider uppercase bg-brand/10 text-brand px-3 py-1 rounded-full border border-brand/20">
-                {isOwner ? "Library Owner" : "Student"}
-              </span>
-            </div>
-          </div>
         </div>
 
-        {/* Profile Edit Form */}
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 sm:p-8 space-y-6">
-          <h2 className="text-lg font-bold text-gray-900 border-b border-gray-100 pb-4">
-            Edit Personal Information
-          </h2>
+        {/* Right Main Content */}
+        <div className="flex-1 space-y-10">
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={user?.email || ""}
-                disabled
-                className="w-full border border-gray-200 bg-gray-50 rounded-lg p-3 text-gray-500 text-sm outline-none cursor-not-allowed"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 9876543210"
-                className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Current Occupation
-              </label>
-              <input
-                type="text"
-                value={occupation}
-                onChange={(e) => setOccupation(e.target.value)}
-                placeholder={isOwner ? "e.g. Business Owner / Administrator" : "e.g. UPSC Aspirant / Software Engineer"}
-                className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-              />
-            </div>
+          {/* Header Title & Subtitle */}
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">
+              My profile
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 max-w-xl leading-relaxed">
+              Hosts and guests can see your profile and it may appear across StudySpace to help us build trust in our community.{" "}
+              <a href="#" className="underline font-semibold text-gray-800">Learn more</a>
+            </p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Bio
-            </label>
-            <textarea
-              rows={3}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell us a little bit about yourself..."
-              className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-            />
+          {/* DB-Backed Profile Details Fact Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+            {profileFields.map((field) => (
+              <div
+                key={field.id}
+                onClick={() => {
+                  if (field.id !== "email") openModal(field);
+                }}
+                className={`flex items-center justify-between py-3.5 border-b border-gray-200/80 rounded-lg px-2 transition ${field.id !== "email" ? "hover:bg-gray-50/80 cursor-pointer group" : "cursor-default opacity-85"
+                  }`}
+              >
+                <div className="flex items-center gap-3 pr-2 min-w-0">
+                  <span className="shrink-0">{field.icon}</span>
+                  <span className="text-sm font-medium text-gray-800 truncate">
+                    {field.label}
+                    {field.value ? (
+                      <span className="text-gray-900 font-semibold">: {field.value}</span>
+                    ) : (
+                      <span className="text-gray-400 font-normal"> (click to add)</span>
+                    )}
+                  </span>
+                </div>
+                {field.id !== "email" && (
+                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition" />
+                )}
+              </div>
+            ))}
           </div>
 
-          {/* Role-Specific Profile Fields */}
-          {!isOwner ? (
-            /* Student Fields */
-            <div className="space-y-6 pt-4 border-t border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Student Details</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Heart className="w-3.5 h-3.5 text-brand" /> Hobbies & Interests
-                  </label>
-                  <input
-                    type="text"
-                    value={hobbies}
-                    onChange={(e) => setHobbies(e.target.value)}
-                    placeholder="e.g. Reading, Chess, Coding"
-                    className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                  />
-                </div>
+          {/* About Me Section */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <h2 className="text-2xl font-bold text-gray-900">About me</h2>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-brand" /> Currently Preparation / Focus
-                  </label>
-                  <input
-                    type="text"
-                    value={currentlyDoing}
-                    onChange={(e) => setCurrentlyDoing(e.target.value)}
-                    placeholder="e.g. Preparing for GATE 2027"
-                    className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <Target className="w-3.5 h-3.5 text-brand" /> Target Goal
-                </label>
-                <input
-                  type="text"
-                  value={targetGoal}
-                  onChange={(e) => setTargetGoal(e.target.value)}
-                  placeholder="e.g. Secure AIR under 100"
-                  className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                />
-              </div>
-            </div>
-          ) : (
-            /* Owner Fields */
-            <div className="space-y-6 pt-4 border-t border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Business & Host Details</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Building className="w-3.5 h-3.5 text-brand" /> Business Information / Company Name
-                  </label>
-                  <input
-                    type="text"
-                    value={businessInfo}
-                    onChange={(e) => setBusinessInfo(e.target.value)}
-                    placeholder="e.g. Apex Learning Hubs Pvt Ltd"
-                    className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-brand" /> Hosting Experience
-                  </label>
-                  <input
-                    type="text"
-                    value={experience}
-                    onChange={(e) => setExperience(e.target.value)}
-                    placeholder="e.g. 5+ years managing library space"
-                    className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                  Business Description
-                </label>
-                <textarea
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Provide an overview of your library amenities, study environment, and operational guidelines..."
-                  className="w-full border border-gray-300 focus:border-brand focus:ring-1 focus:ring-brand rounded-lg p-3 outline-none text-gray-800 text-sm transition"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end pt-4">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-brand hover:bg-brand-hover text-white text-sm font-semibold px-6 py-3 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+            <div
+              onClick={() =>
+                openModal({
+                  id: "bio",
+                  icon: <User className="w-4 h-4 text-gray-700" />,
+                  label: "About me",
+                  title: "Write your intro",
+                  description: "Tell the StudySpace community about your learning habits, goals, or background.",
+                  placeholder: "Write something fun and punchy.",
+                  value: bio,
+                  maxLength: 200,
+                })
+              }
+              className="border border-dashed border-gray-400/80 rounded-2xl p-6 sm:p-8 hover:border-gray-600 transition cursor-pointer space-y-2 bg-gray-50/40"
             >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? "Saving Changes..." : "Save Profile"}
+              <p className="text-sm text-gray-500 font-medium">
+                {bio || "Write something fun and punchy."}
+              </p>
+              <button className="text-sm font-bold text-gray-900 underline hover:text-black">
+                {bio ? "Edit intro" : "Add intro"}
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Action - Done Button */}
+          <div className="pt-6 flex justify-end border-t border-gray-100">
+            <button
+              onClick={() => showToast("Profile saved!", "success")}
+              className="bg-[#222222] hover:bg-black text-white text-sm font-bold px-8 py-3 rounded-xl shadow-md transition cursor-pointer"
+            >
+              Done
             </button>
           </div>
-        </form>
 
+        </div>
       </div>
+
+      {/* Interactive Profile Edit Modal Component */}
+      {modalOpen && activeField && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6 relative border border-gray-100">
+
+            {/* Top Close Button */}
+            <button
+              onClick={() => setModalOpen(false)}
+              className="text-gray-500 hover:text-gray-900 transition p-1 rounded-full hover:bg-gray-100 focus:outline-none cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Title & Description */}
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+                {activeField.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-500 leading-relaxed font-normal">
+                {activeField.description}
+              </p>
+            </div>
+
+            {/* Input Box */}
+            <div className="space-y-1.5">
+              <div className="relative">
+                {activeField.id === "bio" ? (
+                  <textarea
+                    rows={4}
+                    value={modalInputValue}
+                    onChange={(e) =>
+                      setModalInputValue(e.target.value.slice(0, activeField.maxLength || 200))
+                    }
+                    placeholder={activeField.placeholder}
+                    className="w-full border border-gray-400 focus:border-gray-900 rounded-2xl p-4 text-sm outline-none text-gray-800 transition font-medium placeholder:text-gray-400"
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={modalInputValue}
+                    onChange={(e) =>
+                      setModalInputValue(e.target.value.slice(0, activeField.maxLength || 60))
+                    }
+                    placeholder={activeField.placeholder}
+                    className="w-full border border-gray-400 focus:border-gray-900 rounded-2xl p-4 text-sm outline-none text-gray-800 transition font-medium placeholder:text-gray-400"
+                  />
+                )}
+              </div>
+
+              {/* Character Counter */}
+              <div className="flex justify-end pr-2">
+                <span className="text-[11px] font-bold text-gray-400">
+                  {activeField.maxLength
+                    ? `${activeField.maxLength - modalInputValue.length} characters available`
+                    : "40 characters available"}
+                </span>
+              </div>
+            </div>
+
+            {/* Bottom Modal Actions */}
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={handleSaveModal}
+                disabled={saving}
+                className="bg-[#222222] hover:bg-black text-white text-sm font-bold px-7 py-3 rounded-xl transition shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                <span>{saving ? "Saving..." : "Save"}</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
