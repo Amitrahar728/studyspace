@@ -62,12 +62,12 @@ export default function SeatCanvas({
   // Render function for generic layout objects
   const renderObject = (obj: LayoutObject) => {
     const isSeat = obj.type === "SEAT" && obj.seat;
-    
+
     if (isSeat && obj.seat) {
       const seatId = obj.seat.id;
       const seatState = seatStates[seatId] || { isBooked: false, isHeld: false };
       const isSelected = selectedSeatId === seatId;
-      
+
       // Determine colors based on booking state
       let fill = "#FFFFFF"; // Available
       let stroke = "#10B981"; // Emerald green
